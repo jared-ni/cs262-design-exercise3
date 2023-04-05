@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package grpc;
+
+message Empty {}
+
+// denotes a message that is sent between 2 users
+message Note {
+	int32 version = 1;
+	int32 operation_code = 2;
+    string sender = 3;
+	string receiver = 4;
+    string message = 5;
+}
+
+// denotes a response from the server
+message ServerResponse {
+	bool success = 1;
+	string message = 2;
+}
+
+// denotes a request to creating or logging in an account
+message AccountInfo {
+	string username = 1;
+	string password = 2;
+}
+
+// The ChatServer service definition.
+service ChatServer {
+    // bi-directional stream for chat streaming between server and client
+    rpc ChatStream (Empty) returns (stream Note);
+    rpc SendNote (Note) returns (ServerResponse);
+	// account creation
+	rpc CreateAccount (AccountInfo) returns (ServerResponse);
+	// account login
+	rpc Login (AccountInfo) returns (ServerResponse);
+	// get unread
+	rpc Logout (Empty) returns (ServerResponse);
+	// list accounts
+	rpc ListAccounts (AccountInfo) returns (stream ServerResponse);
+	// delete account
+	rpc DeleteAccount (AccountInfo) returns (stream ServerResponse);
+}
+
