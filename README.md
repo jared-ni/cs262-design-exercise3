@@ -1,4 +1,4 @@
-# cs262-design-exercise1
+# cs262-design-exercise3
 
 ## Running on Local
 Clone the repository
