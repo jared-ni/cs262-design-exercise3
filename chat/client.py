@@ -22,29 +22,48 @@ class Client:
         # the frame to put ui components on
         self.username = ""
         self.address = socket.gethostbyname(socket.gethostname())
-        self.port = 43210
+        # self.port = None
+        # dictionary of (ip, ports) of all replicas
+        self.ip_ports = {
+            "R1": None,
+            "R2": None,
+            "R3": None,
+        }
+
+        def handle_connect(rn):
+            while True:
+                local = input(f"Are you running replica {rn} locally? (yes/no) ")
+                if local.lower() == 'no':
+                    response = input(f"Server replica {rn} <IP address> <port>: ")
+                    self.ip_ports[f"R{rn}"] = response.split()
+                    break
+                elif local.lower() == 'yes':
+                    response = input(f"Server replica {rn} <port>: ")
+                    self.ip_ports[f"R{rn}"] = [self.address, response]
+                    break
+                else:
+                    continue
 
         # configure server address, if on Jared's Mac, try 10.250.151.166
         try:
-            while True:
-                response = input("Is the server on this machine? (yes/no) ")
-                if response.lower() == 'yes':
-                    break
-                elif response.lower() == 'no':
-                    if len(sys.argv) != 2:
-                        print(sys.argv)
-                        print("Usage: python3 chat_gclient.py <host>")
-                        return
-                    self.address = sys.argv[1]
-                    break
+            handle_connect("1")
+            handle_connect("2")
+            handle_connect("3")
         except KeyboardInterrupt:
             print("\n[DISCONNECTED]")
             exit(0)
 
-        # create a gRPC channel + stub
-        addr = str(self.address) + ":" + str(self.port)
-        channel = grpc.insecure_channel(addr)
-        self.conn = rpc.ChatServerStub(channel)
+        print(self.ip_ports)
+
+        try:
+            # create a gRPC channel + stub
+            addr = str(self.ip_ports["R1"][0]) + ":" + str(self.ip_ports["R1"][1])
+            channel = grpc.insecure_channel(addr)
+            self.conn = rpc.ChatServerStub(channel)
+
+        except:
+            print("Could not connect to server. Check ip and port addresses.")
+            exit(0)
 
     
     # call to start everything: listening thread and the input thread

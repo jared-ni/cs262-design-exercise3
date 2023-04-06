@@ -6,7 +6,8 @@ import chat_pb2 as chat__pb2
 
 
 class ChatServerStub(object):
-    """Missing associated documentation comment in .proto file."""
+    """The ChatServer service definition.
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -15,47 +16,48 @@ class ChatServerStub(object):
             channel: A grpc.Channel.
         """
         self.ChatStream = channel.unary_stream(
-                '/grpc.ChatServer/ChatStream',
+                '/chat.ChatServer/ChatStream',
                 request_serializer=chat__pb2.Empty.SerializeToString,
                 response_deserializer=chat__pb2.Note.FromString,
                 )
         self.SendNote = channel.unary_unary(
-                '/grpc.ChatServer/SendNote',
+                '/chat.ChatServer/SendNote',
                 request_serializer=chat__pb2.Note.SerializeToString,
                 response_deserializer=chat__pb2.ServerResponse.FromString,
                 )
         self.CreateAccount = channel.unary_unary(
-                '/grpc.ChatServer/CreateAccount',
+                '/chat.ChatServer/CreateAccount',
                 request_serializer=chat__pb2.AccountInfo.SerializeToString,
                 response_deserializer=chat__pb2.ServerResponse.FromString,
                 )
         self.Login = channel.unary_unary(
-                '/grpc.ChatServer/Login',
+                '/chat.ChatServer/Login',
                 request_serializer=chat__pb2.AccountInfo.SerializeToString,
                 response_deserializer=chat__pb2.ServerResponse.FromString,
                 )
         self.Logout = channel.unary_unary(
-                '/grpc.ChatServer/Logout',
+                '/chat.ChatServer/Logout',
                 request_serializer=chat__pb2.Empty.SerializeToString,
                 response_deserializer=chat__pb2.ServerResponse.FromString,
                 )
         self.ListAccounts = channel.unary_stream(
-                '/grpc.ChatServer/ListAccounts',
+                '/chat.ChatServer/ListAccounts',
                 request_serializer=chat__pb2.AccountInfo.SerializeToString,
                 response_deserializer=chat__pb2.ServerResponse.FromString,
                 )
         self.DeleteAccount = channel.unary_stream(
-                '/grpc.ChatServer/DeleteAccount',
+                '/chat.ChatServer/DeleteAccount',
                 request_serializer=chat__pb2.AccountInfo.SerializeToString,
                 response_deserializer=chat__pb2.ServerResponse.FromString,
                 )
 
 
 class ChatServerServicer(object):
-    """Missing associated documentation comment in .proto file."""
+    """The ChatServer service definition.
+    """
 
     def ChatStream(self, request, context):
-        """This bi-directional stream makes it possible to send and receive Notes between 2 persons
+        """bi-directional stream for chat streaming between server and client
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -142,13 +144,14 @@ def add_ChatServerServicer_to_server(servicer, server):
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'grpc.ChatServer', rpc_method_handlers)
+            'chat.ChatServer', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
 
 
  # This class is part of an EXPERIMENTAL API.
 class ChatServer(object):
-    """Missing associated documentation comment in .proto file."""
+    """The ChatServer service definition.
+    """
 
     @staticmethod
     def ChatStream(request,
@@ -161,7 +164,7 @@ class ChatServer(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_stream(request, target, '/grpc.ChatServer/ChatStream',
+        return grpc.experimental.unary_stream(request, target, '/chat.ChatServer/ChatStream',
             chat__pb2.Empty.SerializeToString,
             chat__pb2.Note.FromString,
             options, channel_credentials,
@@ -178,7 +181,7 @@ class ChatServer(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/grpc.ChatServer/SendNote',
+        return grpc.experimental.unary_unary(request, target, '/chat.ChatServer/SendNote',
             chat__pb2.Note.SerializeToString,
             chat__pb2.ServerResponse.FromString,
             options, channel_credentials,
@@ -195,7 +198,7 @@ class ChatServer(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/grpc.ChatServer/CreateAccount',
+        return grpc.experimental.unary_unary(request, target, '/chat.ChatServer/CreateAccount',
             chat__pb2.AccountInfo.SerializeToString,
             chat__pb2.ServerResponse.FromString,
             options, channel_credentials,
@@ -212,7 +215,7 @@ class ChatServer(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/grpc.ChatServer/Login',
+        return grpc.experimental.unary_unary(request, target, '/chat.ChatServer/Login',
             chat__pb2.AccountInfo.SerializeToString,
             chat__pb2.ServerResponse.FromString,
             options, channel_credentials,
@@ -229,7 +232,7 @@ class ChatServer(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/grpc.ChatServer/Logout',
+        return grpc.experimental.unary_unary(request, target, '/chat.ChatServer/Logout',
             chat__pb2.Empty.SerializeToString,
             chat__pb2.ServerResponse.FromString,
             options, channel_credentials,
@@ -246,7 +249,7 @@ class ChatServer(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_stream(request, target, '/grpc.ChatServer/ListAccounts',
+        return grpc.experimental.unary_stream(request, target, '/chat.ChatServer/ListAccounts',
             chat__pb2.AccountInfo.SerializeToString,
             chat__pb2.ServerResponse.FromString,
             options, channel_credentials,
@@ -263,7 +266,7 @@ class ChatServer(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_stream(request, target, '/grpc.ChatServer/DeleteAccount',
+        return grpc.experimental.unary_stream(request, target, '/chat.ChatServer/DeleteAccount',
             chat__pb2.AccountInfo.SerializeToString,
             chat__pb2.ServerResponse.FromString,
             options, channel_credentials,

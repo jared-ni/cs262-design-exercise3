@@ -8,6 +8,7 @@ import threading
 import bcrypt
 import socket
 import errno
+import sys
 
 # Chat Server class for handling gRPC connected clients and their requests
 class ChatServer(rpc.ChatServerServicer):
@@ -208,7 +209,13 @@ class ChatServer(rpc.ChatServerServicer):
 # main thread for handling clients
 if __name__ == '__main__':
     FORMAT = "utf-8"
-    port = 43210
+    
+    # server port number must be specified as a command line argument
+    if len(sys.argv) < 2:
+        print('[SERVER ERROR] Usage: python server.py <port>')
+        sys.exit(1)
+    port = int(sys.argv[1])
+
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10)) 
     rpc.add_ChatServerServicer_to_server(ChatServer(), server)
     print('[SERVER STARTING] Listening on port ' + str(port) + '...')
