@@ -59,7 +59,7 @@ class Client:
             # create a gRPC channel + stub
             addr = str(self.ip_ports["R1"][0]) + ":" + str(self.ip_ports["R1"][1])
             channel = grpc.insecure_channel(addr)
-            self.conn = rpc.ChatServerStub(channel)
+            self.stub = rpc.ChatServerStub(channel)
 
         except:
             print("Could not connect to server. Check ip and port addresses.")
@@ -75,7 +75,7 @@ class Client:
 
     # listening thread for incoming messages from other users
     def __listen_for_messages(self):
-        for note in self.conn.ChatStream(chat.Empty()):
+        for note in self.stub.ChatStream(chat.Empty()):
             print(">[{}] {}".format(note.sender, note.message))
 
 
@@ -89,13 +89,19 @@ class Client:
         n.message = message
 
         # get server response and print error message if unsuccessful
-        response = self.conn.SendNote(n)
-        if not response.success:
-            print(response.message)
-            return False
-        return True
-    
+        # TODO: get ACK, if not, server has failed, so choose another replica
+        # response = self.stub.SendNote(n)
+        try:
+            response, status = self.stub.SendNote.with_call(n, timeout=5)
+            if not response.success:
+                print(response.message)
+                return False
+            return True
+        except grpc.RpcError as e:
+            print("Server failed, trying another replica...")
+            # self.switch_replica()
 
+    
     # register user
     def register_user(self):
         while True:
@@ -121,7 +127,7 @@ class Client:
                 n = chat.AccountInfo()
                 n.username = username
                 n.password = self.get_hashed_password(password)
-                response = self.conn.CreateAccount(n)
+                response = self.stub.CreateAccount(n)
                 print(response.message)
                 if response.success:
                     return True
@@ -144,7 +150,7 @@ class Client:
                 n = chat.AccountInfo()
                 n.username = username
                 n.password = self.get_hashed_password(password)
-                response = self.conn.Login(n)
+                response = self.stub.Login(n)
 
                 print(response.message)
                 self.print_commands()
@@ -160,7 +166,7 @@ class Client:
     # logout user
     def logout(self):
         n = chat.Empty()
-        response = self.conn.Logout(n)
+        response = self.stub.Logout(n)
         print(response.message)
         if response.success:
             self.username = ""
@@ -172,7 +178,7 @@ class Client:
         n.username = magic_word.strip()
 
         print("Current accounts:")
-        for account in self.conn.ListAccounts(n):
+        for account in self.stub.ListAccounts(n):
             if not account.success:
                 print("Account Listing Error")
                 break
@@ -191,7 +197,7 @@ class Client:
         n.password = self.get_hashed_password(n.password)
 
         # get server response and print error message if unsuccessful, else print success message
-        for response in self.conn.DeleteAccount(n):
+        for response in self.stub.DeleteAccount(n):
             print(response.message)
             if not response.success:
                 print("Account deletion failed.")
