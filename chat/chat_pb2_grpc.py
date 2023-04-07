@@ -15,6 +15,11 @@ class ChatServerStub(object):
         Args:
             channel: A grpc.Channel.
         """
+        self.SendReplica = channel.unary_unary(
+                '/chat.ChatServer/SendReplica',
+                request_serializer=chat__pb2.ReplicaMessage.SerializeToString,
+                response_deserializer=chat__pb2.ServerResponse.FromString,
+                )
         self.ChatStream = channel.unary_stream(
                 '/chat.ChatServer/ChatStream',
                 request_serializer=chat__pb2.Empty.SerializeToString,
@@ -56,9 +61,15 @@ class ChatServerServicer(object):
     """The ChatServer service definition.
     """
 
-    def ChatStream(self, request, context):
+    def SendReplica(self, request, context):
         """bi-directional stream for chat streaming between server and client
         """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ChatStream(self, request, context):
+        """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -107,6 +118,11 @@ class ChatServerServicer(object):
 
 def add_ChatServerServicer_to_server(servicer, server):
     rpc_method_handlers = {
+            'SendReplica': grpc.unary_unary_rpc_method_handler(
+                    servicer.SendReplica,
+                    request_deserializer=chat__pb2.ReplicaMessage.FromString,
+                    response_serializer=chat__pb2.ServerResponse.SerializeToString,
+            ),
             'ChatStream': grpc.unary_stream_rpc_method_handler(
                     servicer.ChatStream,
                     request_deserializer=chat__pb2.Empty.FromString,
@@ -152,6 +168,23 @@ def add_ChatServerServicer_to_server(servicer, server):
 class ChatServer(object):
     """The ChatServer service definition.
     """
+
+    @staticmethod
+    def SendReplica(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/chat.ChatServer/SendReplica',
+            chat__pb2.ReplicaMessage.SerializeToString,
+            chat__pb2.ServerResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
     @staticmethod
     def ChatStream(request,

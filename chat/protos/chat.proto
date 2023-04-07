@@ -25,9 +25,15 @@ message AccountInfo {
 	string password = 2;
 }
 
+message ReplicaMessage {
+	string ip = 1;
+	int32 port = 2;
+}
+
 // The ChatServer service definition.
 service ChatServer {
     // bi-directional stream for chat streaming between server and client
+	rpc SendReplica (ReplicaMessage) returns (ServerResponse);
     rpc ChatStream (Empty) returns (stream Note);
     rpc SendNote (Note) returns (ServerResponse);
 	// account creation

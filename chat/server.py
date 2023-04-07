@@ -9,12 +9,13 @@ import bcrypt
 import socket
 import errno
 import sys
+import sqlite3
 
 
 # Chat Server class for handling gRPC connected clients and their requests
 class ChatServer(rpc.ChatServerServicer):
 
-    def __init__(self):
+    def __init__(self, port):
         # List with all the chat history
         self.users = {}
         # maps context.peer() to username
@@ -22,6 +23,97 @@ class ChatServer(rpc.ChatServerServicer):
         # thread locks for preventing race conditions in users and clients
         self.users_lock = threading.Lock()
         self.clients_lock = threading.Lock()
+        
+        # TODO: connect to other servers
+        self.address = socket.gethostbyname(socket.gethostname())
+        self.port = port
+        self.ip_ports = {
+            "R1": (self.address, port),
+            "R2": None,
+            "R3": None,
+        }
+        self.replica_stubs = {
+            "R2": None,
+            "R3": None,
+        }
+        self.primary = "R1"
+
+        # TODO: add server replicas
+        prior_replicas = 0
+        while True:
+            prior_replicas  = int(input("How many replicas are currently running besides this one? (0, 1, or 2): "))
+            if 0 <= prior_replicas <= 2:
+                break
+            else:
+                print("Invalid number of prior replicas (must be 0, 1, or 2)")
+        
+        # connect prior replicas
+        def handle_connect(rn):
+            while True:
+                local = input(f"Are you running replica {rn} locally? (yes/no) ")
+                if local.lower() == 'no':
+                    response = input(f"Server replica {rn} <IP address> <port>: ")
+                    self.ip_ports[f"R{rn}"] = response.split()
+                    break
+                elif local.lower() == 'yes':
+                    response = input(f"Server replica {rn} <port>: ")
+                    self.ip_ports[f"R{rn}"] = [self.address, response]
+                    break
+                else:
+                    continue
+        
+        # try: 
+        for i in range(1, prior_replicas + 1):
+            handle_connect(i)
+            # connect to replica
+            addr = str(self.ip_ports[f"R{i}"][0]) + ":" + str(self.ip_ports[f"R{i}"][1])
+            channel = grpc.insecure_channel(addr)
+            self.replica_stubs[f"R{i+1}"] = rpc.ChatServerStub(channel)
+            print("Connected to prior replica", i)
+
+        # send current ip and port to prior replicas
+        self.replica_message()
+        # except:
+        #     print("Could not connect to server. Check ip and port addresses.")
+        #     exit(0)
+        
+
+
+        # TODO: add database
+        # self.db = sqlite3.connect(f'chat.db')
+    
+    def replica_message(self):
+        # try:
+        #     n = chat.ReplicaMessage(ip=self.address, port=self.port)
+        #     print("replicas message")
+        #     for rep in self.replica_stubs:
+        #         if self.replica_stubs[rep] is not None:
+        #             response, status = self.replica_stubs[rep].SendReplica.with_call(n, timeout=5)
+        # except Exception as e:
+        #     print("[Replica message] Could not connect to replica")
+        #     exit(0)
+        print("replicas message")
+        n = chat.ReplicaMessage(ip=self.address, port=self.port)
+        for rep in self.replica_stubs:
+            if self.replica_stubs[rep] is not None:
+                response, status = self.replica_stubs[rep].SendReplica.with_call(n, timeout=5)
+                print(response, status)
+
+    # TODO: add message function bewteen replicas
+    def SendReplica(self, request: chat.ReplicaMessage, context):
+        # fill in a None replica
+        for rep in self.ip_ports:
+            if self.ip_ports[rep] is None:
+                self.ip_ports[rep] = (request.ip, request.port)
+                # connect to replica
+                addr = str(self.ip_ports[rep][0]) + ":" + str(self.ip_ports[rep][1])
+                channel = grpc.insecure_channel(addr)
+                self.replica_stubs[rep] = rpc.ChatServerStub(channel)
+                break
+        print("Received replica message")
+        print(self.ip_ports)
+        print(self.replica_stubs)
+        return chat.ServerResponse(success=True, message="Replica added")
 
 
     # hash password again for storage
@@ -216,13 +308,23 @@ if __name__ == '__main__':
         print('[SERVER ERROR] Usage: python server.py <port>')
         sys.exit(1)
     port = int(sys.argv[1])
-
+                
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10)) 
-    rpc.add_ChatServerServicer_to_server(ChatServer(), server)
+
+    # create server object
+    serverObject = ChatServer(port)
+
+    rpc.add_ChatServerServicer_to_server(serverObject, server)
     print('[SERVER STARTING] Listening on port ' + str(port) + '...')
 
     addr_host = socket.gethostbyname(socket.gethostname())
     server.add_insecure_port(f'{addr_host}:{port}')
     server.start()
+
+    # TODO: add server replicas
+
+
+
+
 
     server.wait_for_termination()
