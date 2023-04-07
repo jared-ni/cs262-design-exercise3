@@ -89,11 +89,11 @@ class ChatServer(rpc.ChatServerServicer):
     def detect_failure(self):
         print("[Detect failure] Started thread to detect failures")
         while True:
-            time.sleep(3)
+            time.sleep(5)
             for rep in self.replica_stubs:
                 if self.replica_stubs[rep] is not None:
                     try:
-                        response, status = self.replica_stubs[rep].Ping.with_call(chat.Empty(), timeout=5)
+                        response, status = self.replica_stubs[rep].Ping.with_call(chat.Empty(), timeout=3)
                     except:
                         print(f"[Detect failure] Could not connect to replica {rep}")
                         self.ip_ports[rep] = None
@@ -139,8 +139,6 @@ class ChatServer(rpc.ChatServerServicer):
     # TODO: add message function bewteen replicas
     def SendReplica(self, request: chat.ReplicaMessage, context):
         # fill in a None replica
-        print("[SendReplica] Received replica message")
-        print(self.ip_ports)
         for rep in self.ip_ports:
             if self.ip_ports[rep] is None:
                 try:
@@ -156,6 +154,8 @@ class ChatServer(rpc.ChatServerServicer):
                     self.replica_stubs[rep] = None
         # leader election
         self.leader_election()
+        print("[SendReplica] Received replica message")
+        print(self.ip_ports)
 
         return chat.ServerResponse(success=True, message="Replica added")
 
