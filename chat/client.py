@@ -29,6 +29,7 @@ class Client:
             "R2": None,
             "R3": None,
         }
+        self.primary = "R1"
 
         def handle_connect(rn):
             while True:
@@ -99,7 +100,19 @@ class Client:
             return True
         except grpc.RpcError as e:
             print("Server failed, trying another replica...")
-            # self.switch_replica()
+            self.switch_replica()
+    
+
+    # make the current replica None, then switch to another replica
+    def switch_replica(self):
+        self.ip_ports[self.primary] = None
+        for replica in self.ip_ports:
+            if self.ip_ports[replica] is not None:
+                self.primary = replica
+                break
+        addr = str(self.ip_ports[self.primary][0]) + ":" + str(self.ip_ports[self.primary][1])
+        channel = grpc.insecure_channel(addr)
+        self.stub = rpc.ChatServerStub(channel)
 
     
     # register user
