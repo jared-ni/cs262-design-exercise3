@@ -111,9 +111,15 @@ class Client:
             if self.ip_ports[replica] is not None:
                 self.primary = replica
                 break
-        addr = str(self.ip_ports[self.primary][0]) + ":" + str(self.ip_ports[self.primary][1])
-        channel = grpc.insecure_channel(addr)
-        self.stub = rpc.ChatServerStub(channel)
+        try:
+            addr = str(self.ip_ports[self.primary][0]) + ":" + str(self.ip_ports[self.primary][1])
+            channel = grpc.insecure_channel(addr)
+            self.stub = rpc.ChatServerStub(channel)
+        except:
+            # try another replica
+            print("[switch replica] can't connect to replica; trying another replica...")
+            self.switch_replica()
+
 
     
     # register user
