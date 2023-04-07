@@ -46,5 +46,7 @@ service ChatServer {
 	rpc ListAccounts (AccountInfo) returns (stream ServerResponse);
 	// delete account
 	rpc DeleteAccount (AccountInfo) returns (stream ServerResponse);
+	// ping 
+	rpc Ping (Empty) returns (ServerResponse);
 }
 

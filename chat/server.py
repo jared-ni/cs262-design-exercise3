@@ -78,15 +78,41 @@ class ChatServer(rpc.ChatServerServicer):
             print("Could not connect to server. Check ip and port addresses.")
             exit(0)
 
+        # start thread to detect failures
+        threading.Thread(target=self.detect_failure, daemon=True).start()
         
-
 
         # TODO: add database
         # self.db = sqlite3.connect(f'chat.db')
+    
+    # periodically check if replicas are still alive
+    def detect_failure(self):
+        print("[Detect failure] Started thread to detect failures")
+        while True:
+            time.sleep(3)
+            for rep in self.replica_stubs:
+                if self.replica_stubs[rep] is not None:
+                    try:
+                        response, status = self.replica_stubs[rep].Ping.with_call(chat.Empty(), timeout=5)
+                    except:
+                        print(f"[Detect failure] Could not connect to replica {rep}")
+                        self.ip_ports[rep] = None
+                        self.replica_stubs[rep] = None
+                        # leader election
+                        if rep == self.primary:
+                            self.primary = "self"
+                        self.leader_election()
+                        print("[Detect failure] Replica", rep, "failed. New primary:", self.primary)
+                        print(self.ip_ports)
 
+
+    def Ping(self, request: chat.Empty, context):
+        print("[Ping] Received ping")
+        return chat.ServerResponse(success=True, message="Pong")
 
     # find the primary replica among current replicas, by choosing the least uuid
     def leader_election(self):
+        # must start with self; don't know if primary failed or not
         leader_uuid = str(self.ip_ports[self.primary][0]) + "." + str(self.ip_ports[self.primary][1])
         for r in self.ip_ports:
             if self.ip_ports[r] is not None:
@@ -97,16 +123,17 @@ class ChatServer(rpc.ChatServerServicer):
 
     
     def replica_message(self):
-        try:
-            n = chat.ReplicaMessage(ip=self.address, port=self.port)
-            for rep in self.replica_stubs:
-                if self.replica_stubs[rep] is not None:
+        n = chat.ReplicaMessage(ip=self.address, port=self.port)
+        for rep in self.replica_stubs:
+            if self.replica_stubs[rep] is not None:
+                try:
                     response, status = self.replica_stubs[rep].SendReplica.with_call(n, timeout=5)
-            # leader election
-            self.leader_election()
-        except Exception as e:
-            print("[Replica message] Could not connect to replica")
-            exit(0)
+                except:
+                    print(f"[Replica message] Could not connect to replica {rep}")
+                    self.ip_ports[rep] = None
+                    self.replica_stubs[rep] = None
+        # leader election
+        self.leader_election()
 
 
     # TODO: add message function bewteen replicas
@@ -116,12 +143,17 @@ class ChatServer(rpc.ChatServerServicer):
         print(self.ip_ports)
         for rep in self.ip_ports:
             if self.ip_ports[rep] is None:
-                self.ip_ports[rep] = (request.ip, request.port)
-                # connect to replica
-                addr = str(self.ip_ports[rep][0]) + ":" + str(self.ip_ports[rep][1])
-                channel = grpc.insecure_channel(addr)
-                self.replica_stubs[rep] = rpc.ChatServerStub(channel)
-                break
+                try:
+                    self.ip_ports[rep] = (request.ip, request.port)
+                    # connect to replica
+                    addr = str(self.ip_ports[rep][0]) + ":" + str(self.ip_ports[rep][1])
+                    channel = grpc.insecure_channel(addr)
+                    self.replica_stubs[rep] = rpc.ChatServerStub(channel)
+                    break
+                except:
+                    print(f"[SendReplica] Could not connect to replica {rep}")
+                    self.ip_ports[rep] = None
+                    self.replica_stubs[rep] = None
         # leader election
         self.leader_election()
 
