@@ -76,6 +76,7 @@ class Client:
 
     # listening thread for incoming messages from other users
     def __listen_for_messages(self):
+        # TODO: check the type of message. If new replica, store it
         for note in self.stub.ChatStream(chat.Empty()):
             print(">[{}] {}".format(note.sender, note.message))
 

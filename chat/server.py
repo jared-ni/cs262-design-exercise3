@@ -28,13 +28,13 @@ class ChatServer(rpc.ChatServerServicer):
         self.address = socket.gethostbyname(socket.gethostname())
         self.port = port
         self.ip_ports = {
-            "R1": (self.address, port),
+            "self": (self.address, port),
+            "R1": None,
             "R2": None,
-            "R3": None,
         }
         self.replica_stubs = {
+            "R1": None,
             "R2": None,
-            "R3": None,
         }
         self.primary = "R1"
 
@@ -46,6 +46,8 @@ class ChatServer(rpc.ChatServerServicer):
                 break
             else:
                 print("Invalid number of prior replicas (must be 0, 1, or 2)")
+        print("ports: ")
+        print(self.ip_ports)
         
         # connect prior replicas
         def handle_connect(rn):
@@ -62,46 +64,58 @@ class ChatServer(rpc.ChatServerServicer):
                 else:
                     continue
         
-        # try: 
-        for i in range(1, prior_replicas + 1):
-            handle_connect(i)
-            # connect to replica
-            addr = str(self.ip_ports[f"R{i}"][0]) + ":" + str(self.ip_ports[f"R{i}"][1])
-            channel = grpc.insecure_channel(addr)
-            self.replica_stubs[f"R{i+1}"] = rpc.ChatServerStub(channel)
-            print("Connected to prior replica", i)
+        try: 
+            for i in range(1, prior_replicas + 1):
+                handle_connect(i)
+                # connect to replica
+                addr = str(self.ip_ports[f"R{i}"][0]) + ":" + str(self.ip_ports[f"R{i}"][1])
+                channel = grpc.insecure_channel(addr)
+                self.replica_stubs[f"R{i}"] = rpc.ChatServerStub(channel)
+                print("Connected to prior replica", i)
 
-        # send current ip and port to prior replicas
-        self.replica_message()
-        # except:
-        #     print("Could not connect to server. Check ip and port addresses.")
-        #     exit(0)
+            # send current ip and port to prior replicas
+            self.replica_message()
+        except:
+            print("Could not connect to server. Check ip and port addresses.")
+            exit(0)
         
-
-
         # TODO: add database
         # self.db = sqlite3.connect(f'chat.db')
+
+
+    # find the primary replica among current replicas, by choosing the least uuid
+    def leader_election(self):
+        leader_uuid = self.ip_ports[self.primary][0] + "." + self.ip_ports[self.primary][1]
+        for r in self.ip_ports:
+            if self.ip_ports[r] is not None:
+                uuid = self.ip_ports[r][0] + "." + self.ip_ports[r][1]
+                if uuid < leader_uuid:
+                    leader_uuid = uuid
+                    self.primary = r
+
     
     def replica_message(self):
-        # try:
-        #     n = chat.ReplicaMessage(ip=self.address, port=self.port)
-        #     print("replicas message")
-        #     for rep in self.replica_stubs:
-        #         if self.replica_stubs[rep] is not None:
-        #             response, status = self.replica_stubs[rep].SendReplica.with_call(n, timeout=5)
-        # except Exception as e:
-        #     print("[Replica message] Could not connect to replica")
-        #     exit(0)
-        print("replicas message")
-        n = chat.ReplicaMessage(ip=self.address, port=self.port)
-        for rep in self.replica_stubs:
-            if self.replica_stubs[rep] is not None:
-                response, status = self.replica_stubs[rep].SendReplica.with_call(n, timeout=5)
-                print(response, status)
+        try:
+            n = chat.ReplicaMessage(ip=self.address, port=self.port)
+            print("replicas message")
+            for rep in self.replica_stubs:
+                if self.replica_stubs[rep] is not None:
+                    response, status = self.replica_stubs[rep].SendReplica.with_call(n, timeout=5)
+        except Exception as e:
+            print("[Replica message] Could not connect to replica")
+            exit(0)
+        # print("replicas message")
+        # n = chat.ReplicaMessage(ip=self.address, port=self.port)
+        # for rep in self.replica_stubs:
+        #     if self.replica_stubs[rep] is not None:
+        #         response, status = self.replica_stubs[rep].SendReplica.with_call(n, timeout=5)
+        #         print(response, status)
 
     # TODO: add message function bewteen replicas
     def SendReplica(self, request: chat.ReplicaMessage, context):
         # fill in a None replica
+        print("[SendReplica] Received replica message")
+        print(self.ip_ports)
         for rep in self.ip_ports:
             if self.ip_ports[rep] is None:
                 self.ip_ports[rep] = (request.ip, request.port)
@@ -112,7 +126,7 @@ class ChatServer(rpc.ChatServerServicer):
                 break
         print("Received replica message")
         print(self.ip_ports)
-        print(self.replica_stubs)
+
         return chat.ServerResponse(success=True, message="Replica added")
 
 
