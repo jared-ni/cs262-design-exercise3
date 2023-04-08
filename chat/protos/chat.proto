@@ -44,6 +44,14 @@ message PingMessage {
 	int32 port = 5;
 }
 
+message DataRequest {
+	string query = 1;
+}
+
+message DataResponse {
+	repeated string rows = 1;
+}
+
 // The ChatServer service definition.
 service ChatServer {
     // bi-directional stream for chat streaming between server and client
@@ -52,6 +60,7 @@ service ChatServer {
 	rpc UpdateStream (Empty) returns (SystemUpdate);
 
     rpc SendNote (Note) returns (ServerResponse);
+	rpc SendCommit (CommitMessage) return (ServerResponse);
 	// account creation
 	rpc CreateAccount (AccountInfo) returns (ServerResponse);
 	// account login
@@ -66,5 +75,8 @@ service ChatServer {
 	rpc Ping (Empty) returns (PingMessage);
 	rpc PingServer (ServerResponse) returns (ServerResponse);
 	rpc ChatSingle (Empty) returns (Note);
+
+	rpc GetData (DataRequest) returns (DataResponse){}
+
 }
 

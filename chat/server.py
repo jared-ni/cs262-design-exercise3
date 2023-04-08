@@ -92,10 +92,23 @@ class ChatServer(rpc.ChatServerServicer):
         print(self.ip_ports)
 
         # TODO: add database
-        self.db = sqlite3.connect(f'chat_{self.address}_{self.port}.db')
-        self.curosr = self.db.cursor()
+        self.db = sqlite3.connect(f'chat.db')
+        self.cursor = self.db.cursor()
+        self.cursor.execute('''CREATE TABLE IF NOT EXISTS users (username text, password text)''')
 
-    
+        # create table to store user chat history
+        self.cursor.execute('''CREATE TABLE IF NOT EXISTS chat (username text, message text)''')
+
+
+
+    def GetData(sef, request, context):
+        conn = sqlite3.connect('mydatabase.db')
+        cursor = conn.cursor()
+        cursor.execute(request.query)
+        rows = [row[0] for row in cursor.fetchall()]
+        return chat.DataResponse(rows=rows)
+
+
     # periodically check if replicas are still alive
     def detect_failure(self):
         print("[Detect failure] Started thread to detect failures")
@@ -470,13 +483,9 @@ if __name__ == '__main__':
     print('[SERVER STARTING] Listening on port ' + str(port) + '...')
 
     addr_host = socket.gethostbyname(socket.gethostname())
+
     server.add_insecure_port(f'{addr_host}:{port}')
     server.start()
-
-    # TODO: add server replicas
-
-
-
 
 
     server.wait_for_termination()
