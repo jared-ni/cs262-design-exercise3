@@ -30,11 +30,19 @@ message ReplicaMessage {
 	int32 port = 2;
 }
 
+message SystemUpdate {
+	bool is_new = 1;
+	string ip = 2;
+	int32 port = 3;
+}
+
 // The ChatServer service definition.
 service ChatServer {
     // bi-directional stream for chat streaming between server and client
 	rpc SendReplica (ReplicaMessage) returns (ServerResponse);
     rpc ChatStream (Empty) returns (stream Note);
+	rpc UpdateStream (Empty) returns (stream SystemUpdate);
+
     rpc SendNote (Note) returns (ServerResponse);
 	// account creation
 	rpc CreateAccount (AccountInfo) returns (ServerResponse);

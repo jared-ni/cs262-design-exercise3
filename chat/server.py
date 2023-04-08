@@ -23,6 +23,9 @@ class ChatServer(rpc.ChatServerServicer):
         # thread locks for preventing race conditions in users and clients
         self.users_lock = threading.Lock()
         self.clients_lock = threading.Lock()
+
+        # system updates
+        self.system_updates = deque()
         
         # TODO: connect to other servers
         self.address = socket.gethostbyname(socket.gethostname())
@@ -54,11 +57,12 @@ class ChatServer(rpc.ChatServerServicer):
                 local = input(f"Are you running replica {rn} locally? (yes/no) ")
                 if local.lower() == 'no':
                     response = input(f"Server replica {rn} <IP address> <port>: ")
-                    self.ip_ports[f"R{rn}"] = response.split()
+                    ip, port = response.split()
+                    self.ip_ports[f"R{rn}"] = (ip, int(port))
                     break
                 elif local.lower() == 'yes':
                     response = input(f"Server replica {rn} <port>: ")
-                    self.ip_ports[f"R{rn}"] = [self.address, response]
+                    self.ip_ports[f"R{rn}"] = (self.address, response)
                     break
                 else:
                     continue
@@ -73,6 +77,7 @@ class ChatServer(rpc.ChatServerServicer):
                 print("Connected to prior replica", i)
 
             # send current ip and port to prior replicas
+            print("checkpoint: got to replica_message")
             self.replica_message()
         except:
             print("Could not connect to server. Check ip and port addresses.")
@@ -106,30 +111,21 @@ class ChatServer(rpc.ChatServerServicer):
                         self.leader_election()
 
                         # inform clients of failed replica if current replica is primary
+                        print("[Detect failure] Informing clients of failed replica")
+
                         if self.primary == "self":
                             self.inform_client_new_replica(failed_replica, is_new=False)
-
-                        print("[Detect failure] Replica", rep, "failed. New primary:", self.primary)
-                        print(self.ip_ports)
 
 
     def Ping(self, request: chat.Empty, context):
         print("[Ping] Received ping")
+        print(self.ip_ports)
         return chat.ServerResponse(success=True, message="Pong")
-
-
-    def inform_client_new_replica(self, replica, is_new=True):
-        # For every client a infinite loop starts (in gRPC's own managed thread)
-        # operation code 8: FAILED, 9: NEW
-        op_code = 9 if is_new else 8
-        new_rep_notice = chat.Note(operation_code=op_code, message=f"{replica}")
-        for client in self.clients:
-            with self.users_lock:
-                self.users[client]['unread'].append(request)
 
 
     # find the primary replica among current replicas, by choosing the least uuid
     def leader_election(self):
+        print("[Leader election] Starting leader election: " + self.primary)
         # must start with self; don't know if primary failed or not
         leader_uuid = str(self.ip_ports[self.primary][0]) + "." + str(self.ip_ports[self.primary][1])
         for r in self.ip_ports:
@@ -138,18 +134,24 @@ class ChatServer(rpc.ChatServerServicer):
                 if uuid < leader_uuid:
                     leader_uuid = uuid
                     self.primary = r
+        
 
     
     def replica_message(self):
+        print("[Replica message] Sending replica message")
         n = chat.ReplicaMessage(ip=self.address, port=self.port)
         for rep in self.replica_stubs:
             if self.replica_stubs[rep] is not None:
-                try:
-                    response, status = self.replica_stubs[rep].SendReplica.with_call(n, timeout=5)
-                except:
-                    print(f"[Replica message] Could not connect to replica {rep}")
-                    self.ip_ports[rep] = None
-                    self.replica_stubs[rep] = None
+                response = self.replica_stubs[rep].SendReplica(n)
+                print("[Replica message] Sent replica message to", rep)
+                # try:
+                #     print("[Replica message] Sending replica message to", rep)
+                #     print(n.ip, n.port)
+                #     # response, status = self.replica_stubs[rep].SendReplica.with_call(n, timeout=5)
+                # except:
+                #     print(f"[Replica message] Could not connect to replica {rep}")
+                #     self.ip_ports[rep] = None
+                #     self.replica_stubs[rep] = None
         # leader election
         self.leader_election()
 
@@ -157,24 +159,41 @@ class ChatServer(rpc.ChatServerServicer):
     # TODO: add message function bewteen replicas
     def SendReplica(self, request: chat.ReplicaMessage, context):
         # fill in a None replica
+        print("[SendReplica] Received replica message", request.ip, request.port)
         for rep in self.ip_ports:
             if self.ip_ports[rep] is None:
-                try:
-                    self.ip_ports[rep] = (request.ip, request.port)
-                    # connect to replica
-                    addr = str(self.ip_ports[rep][0]) + ":" + str(self.ip_ports[rep][1])
-                    channel = grpc.insecure_channel(addr)
-                    self.replica_stubs[rep] = rpc.ChatServerStub(channel)
+                self.ip_ports[rep] = (request.ip, request.port)
+                # connect to replica
+                addr = str(self.ip_ports[rep][0]) + ":" + str(self.ip_ports[rep][1])
+                channel = grpc.insecure_channel(addr)
+                self.replica_stubs[rep] = rpc.ChatServerStub(channel)
+                print("[SendReplica] Connected to replica")
+                print(self.ip_ports)
 
-                    # TODO: inform every client of new replica
-                    if self.primary == "self":
-                        self.inform_client_new_replica(self.ip_ports[rep], is_new=True)
+                if self.primary == "self":
+                    self.inform_client_new_replica(self.ip_ports[rep], is_new=True)
 
-                    break
-                except:
-                    print(f"[SendReplica] Could not connect to replica {rep}")
-                    self.ip_ports[rep] = None
-                    self.replica_stubs[rep] = None
+                break
+
+                # TODO: inform every client of new replica
+                # if self.primary == "self":
+                #     self.inform_client_new_replica(self.ip_ports[rep], is_new=True)
+                # try:
+                #     self.ip_ports[rep] = (request.ip, request.port)
+                #     # connect to replica
+                #     addr = str(self.ip_ports[rep][0]) + ":" + str(self.ip_ports[rep][1])
+                #     channel = grpc.insecure_channel(addr)
+                #     self.replica_stubs[rep] = rpc.ChatServerStub(channel)
+
+                #     # TODO: inform every client of new replica
+                #     if self.primary == "self":
+                #         self.inform_client_new_replica(self.ip_ports[rep], is_new=True)
+
+                #     break
+                # except:
+                #     print(f"[SendReplica] Could not connect to replica {rep}")
+                #     self.ip_ports[rep] = None
+                #     self.replica_stubs[rep] = None
         # leader election
         self.leader_election()
 
@@ -193,6 +212,24 @@ class ChatServer(rpc.ChatServerServicer):
     def check_password(self, password, hashed_password):
         # print(hashed_password)
         return bcrypt.checkpw(password.encode(FORMAT), hashed_password)
+
+
+    def inform_client_new_replica(self, replica, is_new=True):
+        update = chat.SystemUpdate()
+        update.ip = replica[0]
+        update.port = int(replica[1])
+        update.is_new = is_new
+        self.system_updates.append(update)
+        print("[Inform client] Informing clients of new replica")
+        print(self.system_updates)
+
+
+    def UpdateStream(self, _request_iterator, context):
+        while True:
+            # check for new system updates
+            if len(self.system_updates) > 0:
+                update = self.system_updates.popleft()
+                yield update
 
 
     # The stream which will be used to send new messages to clients

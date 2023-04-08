@@ -90,6 +90,7 @@ class Client:
     def start(self):
         # create new listening thread for when new message streams come in
         threading.Thread(target=self.__listen_for_messages, daemon=True).start()
+        threading.Thread(target=self.__listen_for_updates, daemon=True).start()
         self.communicate_with_server()
 
 
@@ -98,6 +99,27 @@ class Client:
         # TODO: check the type of message. If new replica, store it
         for note in self.stub.ChatStream(chat.Empty()):
             print(">[{}] {}".format(note.sender, note.message))
+
+
+    # listens for system updates
+    def __listen_for_updates(self):
+        for update in self.stub.UpdateStream(chat.Empty()):
+            print("System update: ")
+            if not update.is_new:
+                for r in self.ip_ports:
+                    if self.ip_ports[r][0] == update.ip and self.ip_ports[r][1] == str(update.port):
+                        self.ip_ports[r] = None
+                        self.leader_election()
+                        break
+            else:
+                for r in self.ip_ports:
+                    if self.ip_ports[r] is None:
+                        self.ip_ports[r] = [update.ip, str(update.port)]
+                        self.leader_election()
+                        break
+            print(">[{}] {}, {}".format(update.ip, update.port, update.is_new))
+            print(self.ip_ports)
+            print(self.primary)
 
 
     # make the current replica None, then switch to another replica
