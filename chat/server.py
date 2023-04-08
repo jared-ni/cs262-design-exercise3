@@ -92,21 +92,10 @@ class ChatServer(rpc.ChatServerServicer):
         print(self.ip_ports)
 
         # TODO: add database
-        self.db = sqlite3.connect(f'chat.db')
+        self.db = sqlite3.connect(f"chat_{self.port}.db")
         self.cursor = self.db.cursor()
         self.cursor.execute('''CREATE TABLE IF NOT EXISTS users (username text, password text)''')
-
-        # create table to store user chat history
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS chat (username text, message text)''')
-
-
-
-    def GetData(sef, request, context):
-        conn = sqlite3.connect('mydatabase.db')
-        cursor = conn.cursor()
-        cursor.execute(request.query)
-        rows = [row[0] for row in cursor.fetchall()]
-        return chat.DataResponse(rows=rows)
+        self.cursor.execute('''CREATE TABLE IF NOT EXISTS chat_history (username text, message text)''')
 
 
     # periodically check if replicas are still alive
@@ -247,6 +236,10 @@ class ChatServer(rpc.ChatServerServicer):
                 # Check if there are any new messages if logged in
                 while len(self.users[user]['unread']) > 0:
                     message = self.users[user]['unread'].popleft()
+    
+                    # store message into database
+                    self.cursor.execute("INSERT INTO messages (sender, receiver, message) VALUES (%s, %s, %s)", (message.sender, message.receiver, message.message))
+
 
                     yield message
 
@@ -336,9 +329,12 @@ class ChatServer(rpc.ChatServerServicer):
                 }
             # success message
             # commit log
-            if self.primary == "self":
-                with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
-                    commit_file.write(f"create~{request.username}~{request.password}\n")
+            # if self.primary == "self":
+            #     with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
+            #         commit_file.write(f"create~{request.username}~{request.password}\n")
+
+            # insert into database
+            self.cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)", (request.username, self.users[request.username]['password']))
 
             return chat.ServerResponse(success=True, message=f"[SERVER] Account {request.username} created")
         
@@ -420,7 +416,13 @@ class ChatServer(rpc.ChatServerServicer):
     # Account list
     def ListAccounts(self, request: chat.AccountInfo, context):
         # Lists all users in the users dict
-        for user in self.users.keys():
+        # for user in self.users.keys():
+        #     if request.username == "*" or not request.username or request.username in user:
+        #         yield chat.ServerResponse(success=True, message=f"{user}")
+        
+        # list all accounts in data
+        self.cursor.execute("SELECT username FROM users")
+        for user in self.cursor.fetchall():
             if request.username == "*" or not request.username or request.username in user:
                 yield chat.ServerResponse(success=True, message=f"{user}")
 
