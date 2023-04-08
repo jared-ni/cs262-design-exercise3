@@ -98,9 +98,10 @@ class ChatServer(rpc.ChatServerServicer):
             for rep in self.replica_stubs:
                 if self.replica_stubs[rep] is not None:
                     try:
-                        response, status = self.replica_stubs[rep].Ping.with_call(chat.Empty(), timeout=5)
-                    except:
+                        response, status = self.replica_stubs[rep].PingServer.with_call(chat.Empty(), timeout=10)
+                    except grpc.RpcError as e:
                         print(f"[Detect failure] Could not connect to replica {rep}")
+                        print(e)
                         # TODO: inform client replica failed
                         failed_replica = self.ip_ports[rep]
                         self.ip_ports[rep] = None
@@ -108,7 +109,7 @@ class ChatServer(rpc.ChatServerServicer):
                         # leader election
                         if rep == self.primary:
                             self.primary = "self"
-                        self.leader_election()
+                            self.leader_election()
 
                         # inform clients of failed replica if current replica is primary
                         print("[Detect failure] Informing clients of failed replica")
@@ -117,17 +118,28 @@ class ChatServer(rpc.ChatServerServicer):
                             self.inform_client_new_replica(failed_replica, is_new=False)
 
 
-    def Ping(self, request: chat.Empty, context):
+    # only if new update, primary update the client
+    def Ping(self, request: chat.Empty(), context):
         print("[Ping] Received ping")
-        print(self.ip_ports)
-        return chat.ServerResponse(success=True, message="Pong")
+
+        if len(self.system_updates) > 0:
+            update = self.system_updates.popleft()
+            return chat.PingMessage(success=True, new_server=True, ip=update.ip, port=update.port)
+
+        return chat.PingMessage(success=True, new_server=False)
+    
+
+    def PingServer(self, request: chat.Empty(), context):
+        print("[Server Ping] Received ping")
+
+        return chat.PingMessage(success=True, new_server=False)
 
 
     # find the primary replica among current replicas, by choosing the least uuid
     def leader_election(self):
         print("[Leader election] Starting leader election: " + self.primary)
         # must start with self; don't know if primary failed or not
-        leader_uuid = str(self.ip_ports[self.primary][0]) + "." + str(self.ip_ports[self.primary][1])
+        leader_uuid = str(self.ip_ports["self"][0]) + "." + str(self.ip_ports["self"][1])
         for r in self.ip_ports:
             if self.ip_ports[r] is not None:
                 uuid = str(self.ip_ports[r][0]) + "." + str(self.ip_ports[r][1])
@@ -159,7 +171,6 @@ class ChatServer(rpc.ChatServerServicer):
     # TODO: add message function bewteen replicas
     def SendReplica(self, request: chat.ReplicaMessage, context):
         # fill in a None replica
-        print("[SendReplica] Received replica message", request.ip, request.port)
         for rep in self.ip_ports:
             if self.ip_ports[rep] is None:
                 self.ip_ports[rep] = (request.ip, request.port)
@@ -170,11 +181,13 @@ class ChatServer(rpc.ChatServerServicer):
                 print("[SendReplica] Connected to replica")
                 print(self.ip_ports)
 
-                if self.primary == "self":
-                    self.inform_client_new_replica(self.ip_ports[rep], is_new=True)
+
+                # if self.primary == "self":
+                self.inform_client_new_replica(self.ip_ports[rep], is_new=True)
 
                 break
 
+        self.leader_election()
                 # TODO: inform every client of new replica
                 # if self.primary == "self":
                 #     self.inform_client_new_replica(self.ip_ports[rep], is_new=True)
@@ -195,10 +208,7 @@ class ChatServer(rpc.ChatServerServicer):
                 #     self.ip_ports[rep] = None
                 #     self.replica_stubs[rep] = None
         # leader election
-        self.leader_election()
-
-        print("[SendReplica] Received replica message")
-        print(self.ip_ports)
+        # self.leader_election()
 
         return chat.ServerResponse(success=True, message="Replica added")
 
@@ -221,15 +231,14 @@ class ChatServer(rpc.ChatServerServicer):
         update.is_new = is_new
         self.system_updates.append(update)
         print("[Inform client] Informing clients of new replica")
-        print(self.system_updates)
 
 
-    def UpdateStream(self, _request_iterator, context):
-        while True:
-            # check for new system updates
-            if len(self.system_updates) > 0:
-                update = self.system_updates.popleft()
-                yield update
+    # def UpdateStream(self, _request_iterator, context):
+    #     while True:
+    #         # check for new system updates
+    #         if len(self.system_updates) > 0:
+    #             update = self.system_updates.popleft()
+    #             yield update
 
 
     # The stream which will be used to send new messages to clients

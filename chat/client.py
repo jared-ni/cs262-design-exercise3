@@ -71,8 +71,10 @@ class Client:
 
     
     # find the primary replica among current replicas, by choosing the least uuid
+    # TODO: only perform leader election when the primary fails
     def leader_election(self):
         leader_uuid = ""
+        original = self.primary
         for r in self.ip_ports:
             if self.ip_ports[r] is not None:
                 uuid = str(self.ip_ports[r][0]) + "." + str(self.ip_ports[r][1])
@@ -82,15 +84,24 @@ class Client:
                 elif uuid < leader_uuid:
                     leader_uuid = uuid
                     self.primary = r
+
         if leader_uuid == "":
             print("No replicas available. Exiting...")
             exit(0)
+        elif original != self.primary:
+            # replace the stub
+            addr = str(self.ip_ports[self.primary][0]) + ":" + str(self.ip_ports[self.primary][1])
+            channel = grpc.insecure_channel(addr)
+            self.stub = rpc.ChatServerStub(channel)
+            print(f"[Leader election] stub changed: {self.primary}")
+
 
     # call to start everything: listening thread and the input thread
     def start(self):
         # create new listening thread for when new message streams come in
         threading.Thread(target=self.__listen_for_messages, daemon=True).start()
-        threading.Thread(target=self.__listen_for_updates, daemon=True).start()
+        # threading.Thread(target=self.__listen_for_updates, daemon=True).start()
+        threading.Thread(target=self.ping, daemon=True).start()
         self.communicate_with_server()
 
 
@@ -101,44 +112,58 @@ class Client:
             print(">[{}] {}".format(note.sender, note.message))
 
 
-    # listens for system updates
-    def __listen_for_updates(self):
-        for update in self.stub.UpdateStream(chat.Empty()):
-            print("System update: ")
-            if not update.is_new:
-                for r in self.ip_ports:
-                    if self.ip_ports[r][0] == update.ip and self.ip_ports[r][1] == str(update.port):
-                        self.ip_ports[r] = None
-                        self.leader_election()
-                        break
-            else:
-                for r in self.ip_ports:
-                    if self.ip_ports[r] is None:
-                        self.ip_ports[r] = [update.ip, str(update.port)]
-                        self.leader_election()
-                        break
-            print(">[{}] {}, {}".format(update.ip, update.port, update.is_new))
-            print(self.ip_ports)
-            print(self.primary)
-
-
-    # make the current replica None, then switch to another replica
+    # TODO: make the current replica None, then switch to another replica
     def switch_replica(self):
-        print("[switch replica] current primary: " + self.primary)
+        print("[switch replica] switching replica from " + self.primary)
+
         self.ip_ports[self.primary] = None
         self.primary = None
+
         self.leader_election()
         
         try:
             addr = str(self.ip_ports[self.primary][0]) + ":" + str(self.ip_ports[self.primary][1])
             channel = grpc.insecure_channel(addr)
             self.stub = rpc.ChatServerStub(channel)
-            return True
+
+            print("[switch replica] stub changed! ")
         except:
             # try another replica
             print("[switch replica] can't connect to replica; trying another replica...")
             self.switch_replica()
-        return False
+
+
+    # Pings primary replica to check if it is alive
+    # Everytime ping: listen for possible updates
+    def ping(self):
+        while True:
+            # print("[Ping] Pinging primary replica...")
+            time.sleep(5)
+
+            try:
+                response, status = self.stub.Ping.with_call(chat.Empty(), timeout=12)
+
+                print("\n")
+                print("[Ping] Primary replica is alive.")
+                print(response)
+                print("ip ports:")
+                print(self.ip_ports)
+
+                # check if there's replica update: if so, update ip_ports
+                if response.new_server:
+                    for r in self.ip_ports:
+                        if self.ip_ports[r] is None:
+                            self.ip_ports[r] = [response.ip, response.port]
+                            print(f"[Ping] {r} added to ip_ports")
+                            print(self.ip_ports)
+                print("End of Ping")
+
+            except grpc.RpcError as e:
+                print("[Ping] Primary replica failed. Trying another replica...")
+                print("Error:")
+                print(e)
+                self.switch_replica()
+                print("End of Ping")
 
 
     # send message to server then to receiver
@@ -150,6 +175,7 @@ class Client:
         n.receiver = user
         n.message = message
 
+        print(self.ip_ports)
         # get server response and print error message if unsuccessful
         # TODO: get ACK, if not, server has failed, so choose another replica
         # response = self.stub.SendNote(n)
@@ -163,11 +189,8 @@ class Client:
         except grpc.RpcError as e:
             print("Server failed, trying another replica...")
             # if no server is available, exit. Else, resend message
-            if not self.switch_replica():
-                print("All replicas failed. Exiting...")
-                exit(0)
-            else:
-                self.send_message(user, message)
+            self.switch_replica()
+            self.send_message(user, message)
 
     
     # register user

@@ -25,7 +25,7 @@ class ChatServerStub(object):
                 request_serializer=chat__pb2.Empty.SerializeToString,
                 response_deserializer=chat__pb2.Note.FromString,
                 )
-        self.UpdateStream = channel.unary_stream(
+        self.UpdateStream = channel.unary_unary(
                 '/chat.ChatServer/UpdateStream',
                 request_serializer=chat__pb2.Empty.SerializeToString,
                 response_deserializer=chat__pb2.SystemUpdate.FromString,
@@ -62,6 +62,11 @@ class ChatServerStub(object):
                 )
         self.Ping = channel.unary_unary(
                 '/chat.ChatServer/Ping',
+                request_serializer=chat__pb2.Empty.SerializeToString,
+                response_deserializer=chat__pb2.PingMessage.FromString,
+                )
+        self.PingServer = channel.unary_unary(
+                '/chat.ChatServer/PingServer',
                 request_serializer=chat__pb2.Empty.SerializeToString,
                 response_deserializer=chat__pb2.ServerResponse.FromString,
                 )
@@ -138,6 +143,12 @@ class ChatServerServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def PingServer(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ChatServerServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -151,7 +162,7 @@ def add_ChatServerServicer_to_server(servicer, server):
                     request_deserializer=chat__pb2.Empty.FromString,
                     response_serializer=chat__pb2.Note.SerializeToString,
             ),
-            'UpdateStream': grpc.unary_stream_rpc_method_handler(
+            'UpdateStream': grpc.unary_unary_rpc_method_handler(
                     servicer.UpdateStream,
                     request_deserializer=chat__pb2.Empty.FromString,
                     response_serializer=chat__pb2.SystemUpdate.SerializeToString,
@@ -188,6 +199,11 @@ def add_ChatServerServicer_to_server(servicer, server):
             ),
             'Ping': grpc.unary_unary_rpc_method_handler(
                     servicer.Ping,
+                    request_deserializer=chat__pb2.Empty.FromString,
+                    response_serializer=chat__pb2.PingMessage.SerializeToString,
+            ),
+            'PingServer': grpc.unary_unary_rpc_method_handler(
+                    servicer.PingServer,
                     request_deserializer=chat__pb2.Empty.FromString,
                     response_serializer=chat__pb2.ServerResponse.SerializeToString,
             ),
@@ -247,7 +263,7 @@ class ChatServer(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_stream(request, target, '/chat.ChatServer/UpdateStream',
+        return grpc.experimental.unary_unary(request, target, '/chat.ChatServer/UpdateStream',
             chat__pb2.Empty.SerializeToString,
             chat__pb2.SystemUpdate.FromString,
             options, channel_credentials,
@@ -367,6 +383,23 @@ class ChatServer(object):
             timeout=None,
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/chat.ChatServer/Ping',
+            chat__pb2.Empty.SerializeToString,
+            chat__pb2.PingMessage.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def PingServer(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/chat.ChatServer/PingServer',
             chat__pb2.Empty.SerializeToString,
             chat__pb2.ServerResponse.FromString,
             options, channel_credentials,

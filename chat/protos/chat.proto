@@ -36,12 +36,20 @@ message SystemUpdate {
 	int32 port = 3;
 }
 
+message PingMessage {
+	bool success = 1;
+	bool new_server = 2;
+	bool failed_server = 3;
+	string ip = 4;
+	int32 port = 5;
+}
+
 // The ChatServer service definition.
 service ChatServer {
     // bi-directional stream for chat streaming between server and client
 	rpc SendReplica (ReplicaMessage) returns (ServerResponse);
     rpc ChatStream (Empty) returns (stream Note);
-	rpc UpdateStream (Empty) returns (stream SystemUpdate);
+	rpc UpdateStream (Empty) returns (SystemUpdate);
 
     rpc SendNote (Note) returns (ServerResponse);
 	// account creation
@@ -55,6 +63,7 @@ service ChatServer {
 	// delete account
 	rpc DeleteAccount (AccountInfo) returns (stream ServerResponse);
 	// ping 
-	rpc Ping (Empty) returns (ServerResponse);
+	rpc Ping (Empty) returns (PingMessage);
+	rpc PingServer (Empty) returns (ServerResponse);
 }
 
