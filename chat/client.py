@@ -115,10 +115,24 @@ class Client:
 
 
     # listening thread for incoming messages from other users
+    # def __listen_for_messages(self):
+    #     while True:
+    #         # TODO: check the type of message. If new replica, store it
+    #         for note in self.stub.ChatStream(chat.Empty()):
+    #             print(">[{}] {}".format(note.sender, note.message))
+    #         print("NOW LISTENING")
+    #         time.sleep(2)
     def __listen_for_messages(self):
-        # TODO: check the type of message. If new replica, store it
-        for note in self.stub.ChatStream(chat.Empty()):
-            print(">[{}] {}".format(note.sender, note.message))
+        while True:
+            # TODO: check the type of message. If new replica, store it
+            try:
+                note, status = self.stub.ChatSingle.with_call(chat.Empty(), timeout=5)
+                if note.operation_code==10:
+                    continue
+                print(">[{}] {}".format(note.sender, note.message))
+            except:
+                continue
+
 
 
     # TODO: make the current replica None, then switch to another replica
@@ -153,7 +167,7 @@ class Client:
             time.sleep(3)
 
             try:
-                print("[Ping] Pinging primary replica " + self.primary)
+                # print("[Ping] Pinging primary replica " + self.primary)
                 # print(self.stub)
                 response, status = self.stub.Ping.with_call(chat.Empty(), timeout=3)
 
@@ -180,7 +194,7 @@ class Client:
                                 self.ip_ports[r] = None
                                 print(f"[Ping] {r} removed from ip_ports")
                                 print(self.ip_ports)
-                print("End of Ping")
+                # print("End of Ping")
 
             except grpc.RpcError as e:
                 print("[Ping] Primary replica failed. Trying another replica...")

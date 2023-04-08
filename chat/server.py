@@ -92,7 +92,9 @@ class ChatServer(rpc.ChatServerServicer):
         print(self.ip_ports)
 
         # TODO: add database
-        # self.db = sqlite3.connect(f'chat.db')
+        self.db = sqlite3.connect(f'chat_{self.address}_{self.port}.db')
+        self.curosr = self.db.cursor()
+
     
     # periodically check if replicas are still alive
     def detect_failure(self):
@@ -102,7 +104,7 @@ class ChatServer(rpc.ChatServerServicer):
             for rep in self.replica_stubs:
                 if self.replica_stubs[rep] is not None:
                     try:
-                        response, status = self.replica_stubs[rep].PingServer.with_call(chat.Empty(), timeout=10)
+                        response, status = self.replica_stubs[rep].PingServer.with_call(chat.ServerResponse(message=str(self.port)), timeout=10)
                     except grpc.RpcError as e:
                         print(f"[Detect failure] Could not connect to replica {rep}")
                         print(e)
@@ -134,8 +136,8 @@ class ChatServer(rpc.ChatServerServicer):
         return chat.PingMessage(change=False, new_server=False)
     
 
-    def PingServer(self, request: chat.Empty(), context):
-        print("[Server Ping] Received ping")
+    def PingServer(self, request: chat.ServerResponse(), context):
+        print(f"[Server Ping] Received ping from {request.message}")
 
         return chat.ServerResponse(success=True, message="Pong")
 
@@ -232,7 +234,10 @@ class ChatServer(rpc.ChatServerServicer):
                 # Check if there are any new messages if logged in
                 while len(self.users[user]['unread']) > 0:
                     message = self.users[user]['unread'].popleft()
+
                     yield message
+
+
             except IOError as e:
                 # ignore recoverable EAGAIN and EWOULDBLOCK error
                 if e.errno == errno.EAGAIN and e.errno == errno.EWOULDBLOCK:
@@ -240,6 +245,30 @@ class ChatServer(rpc.ChatServerServicer):
             except Exception as e:
                 print(e)
                 yield chat.ServerResponse(success=False, message="[SERVER] Error sending message")
+    
+
+    def ChatSingle(self, request, context):
+        user = None
+        if context.peer() in self.clients:
+            user = self.clients[context.peer()]
+        # if not user:
+        #     return chat.ServerResponse(success=False, message="[SERVER] Error sending message")
+        
+        # Check if there are any new messages if logged in
+        if user in self.users and len(self.users[user]['unread']) > 0:
+            message = self.users[user]['unread'].popleft()
+            return message
+        else:
+            return chat.Note(operation_code=10)
+
+
+        # except IOError as e:
+        #     # ignore recoverable EAGAIN and EWOULDBLOCK error
+        #     if e.errno == errno.EAGAIN and e.errno == errno.EWOULDBLOCK:
+        #         continue
+        # except Exception as e:
+        #     print(e)
+        #     yield chat.ServerResponse(success=False, message="[SERVER] Error sending message")
                 
 
     # Send a message to the server then to the receiver
@@ -268,7 +297,7 @@ class ChatServer(rpc.ChatServerServicer):
             # commit log
             if self.primary == "self":
                 with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
-                    commit_file.write(f"{request.sender} {request.receiver} {request.message}\n")
+                    commit_file.write(f"send~{context.peer()}~{request.version}~{request.sender}~{request.receiver}~{request.message}\n")
 
             # success message
             return chat.ServerResponse(success=True, message="")
@@ -293,6 +322,11 @@ class ChatServer(rpc.ChatServerServicer):
                     "unread": deque()
                 }
             # success message
+            # commit log
+            if self.primary == "self":
+                with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
+                    commit_file.write(f"create~{request.username}~{request.password}\n")
+
             return chat.ServerResponse(success=True, message=f"[SERVER] Account {request.username} created")
         
         except Exception as e:
@@ -333,6 +367,13 @@ class ChatServer(rpc.ChatServerServicer):
                 self.users[request.username]['client'] = context.peer()
                 self.users[request.username]['logged_in'] = True
             # successfully logged in
+
+            # commit log
+            if self.primary == "self":
+                with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
+                    commit_file.write(f"login~{context.peer()}~{request.username}~{request.password}\n")
+
+
             return chat.ServerResponse(success=True, message=f"[SERVER] Logged in as {request.username}")
         
         except Exception as e:
@@ -353,6 +394,12 @@ class ChatServer(rpc.ChatServerServicer):
             self.users[username]['client'] = None
         with self.clients_lock:
             self.clients[context.peer()] = None
+
+        # commit log
+        if self.primary == "self":
+            with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
+                commit_file.write(f"logout~{context.peer()}\n")
+
 
         return chat.ServerResponse(success=True, message=f"[SERVER] Logged out of user {username}")
 
@@ -391,6 +438,11 @@ class ChatServer(rpc.ChatServerServicer):
                 del self.users[request.username]
 
             # actual account deletion detection
+            if self.primary == "self":
+                with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
+                    commit_file.write(f"logout~{context.peer()}~{request.username}~{request.password}\n")
+
+
             yield chat.ServerResponse(success=True, message=f"[SERVER] Account {request.username} deleted")
             return
         except KeyError or ValueError:
