@@ -133,8 +133,8 @@ class Client:
         
         try:
             addr = str(self.ip_ports[self.primary][0]) + ":" + str(self.ip_ports[self.primary][1])
-            self.channel.close()
             self.stub = None
+            self.channel.close()
             self.channel = grpc.insecure_channel(addr)
             self.stub = rpc.ChatServerStub(self.channel)
 
@@ -159,48 +159,24 @@ class Client:
 
                 # check if there's replica update: if so, update ip_ports
                 if response.change:
-                            
                     if response.new_server:
-                        # exist = False
-                        # for r in self.ip_ports:
-                        #     if self.ip_ports[r] and str(response.port) == self.ip_ports[r][1]:
-                        #         exist = True
-                        # if not exist:
-                        #     for r in self.ip_ports:
-                        #         if self.ip_ports[r] is None:
-                        #             self.ip_ports[r] = [response.ip, str(response.port)]
-                        #             print(f"[Ping] {r} added to ip_ports")
-                        #             print(self.ip_ports)
-                        if self.ip_ports["R1"] is None:
-                            self.ip_ports["R1"] = [response.ip, str(response.port)]
-                            self.leader_election()
-                            print(f"[Ping] stub changed: {self.primary}")
-                            addr = str(self.ip_ports["R1"][0]) + ":" + str(self.ip_ports["R1"][1])
-
-                            self.channel.close()
-                            self.stub = None
-                            channel = grpc.insecure_channel(addr)
-                            self.stub = rpc.ChatServerStub(channel)
-
-                        print('!!!')
-
-                        try: 
-                            response, status = self.stub.Ping.with_call(chat.Empty(), timeout=5)
-                        except grpc.RpcError as e:
-                            print(e)
-                            print("try again")
-                        
-                        try: 
-                            response, status = self.stub.Ping.with_call(chat.Empty(), timeout=5)
-                        except grpc.RpcError as e:
-                            print(e)
-                            print("try again")
-                        
+                        exist = False
+                        for r in self.ip_ports:
+                            if self.ip_ports[r] and str(response.port) == self.ip_ports[r][1]:
+                                exist = True
+                        if not exist:
+                            for r in self.ip_ports:
+                                if self.ip_ports[r] is None:
+                                    self.ip_ports[r] = [response.ip, str(response.port)]
+                                    print(f"[Ping] {r} added to ip_ports")
+                                    print(self.ip_ports)   
+                            self.switch_replica(new_server=True)
+                    # secondary failed
                     else:
                         for r in self.ip_ports:
                             if (self.ip_ports[r] and 
                                 self.ip_ports[r][0] == response.ip and 
-                                self.ip_ports[r][1] == response.port):
+                                self.ip_ports[r][1] == str(response.port)):
                                 self.ip_ports[r] = None
                                 print(f"[Ping] {r} removed from ip_ports")
                                 print(self.ip_ports)

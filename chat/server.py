@@ -119,8 +119,8 @@ class ChatServer(rpc.ChatServerServicer):
                         # inform clients of failed replica if current replica is primary
                         print("[Detect failure] Informing clients of failed replica")
 
-                        # if self.primary == "self":
-                        self.inform_client_new_replica(failed_replica, is_new=False)
+                        if self.primary == "self":
+                            self.inform_client_new_replica(failed_replica, is_new=False)
 
 
     # only if new update, primary update the client
