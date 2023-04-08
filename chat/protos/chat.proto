@@ -37,7 +37,7 @@ message SystemUpdate {
 }
 
 message PingMessage {
-	bool success = 1;
+	bool change = 1;
 	bool new_server = 2;
 	bool failed_server = 3;
 	string ip = 4;

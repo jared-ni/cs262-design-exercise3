@@ -32,25 +32,17 @@ class Client:
         # self.ip_ports ==
         self.primary = "R1"
 
-        def handle_connect(rn):
-            while True:
-                local = input(f"Are you running replica {rn} locally? (yes/no) ")
-                if local.lower() == 'no':
-                    response = input(f"Server replica {rn} <IP address> <port>: ")
-                    self.ip_ports[f"R{rn}"] = response.split()
-                    break
-                elif local.lower() == 'yes':
-                    response = input(f"Server replica {rn} <port>: ")
-                    self.ip_ports[f"R{rn}"] = [self.address, response]
-                    break
-                else:
-                    continue
+        # stub for gRPC channel
+        self.channel = None
+        self.stub = None
+
+
 
         # configure server address, if on Jared's Mac, try 10.250.151.166
         try:
-            handle_connect("1")
-            handle_connect("2")
-            handle_connect("3")
+            self.handle_connect("1")
+            self.handle_connect("2")
+            self.handle_connect("3")
         except KeyboardInterrupt:
             print("\n[DISCONNECTED]")
             exit(0)
@@ -61,18 +53,35 @@ class Client:
             # connect to primary replica
             self.leader_election()
             # create a gRPC channel + stub
+            print(f"[LEADER] Connecting to {self.primary}...")
             addr = str(self.ip_ports[self.primary][0]) + ":" + str(self.ip_ports[self.primary][1])
-            channel = grpc.insecure_channel(addr)
-            self.stub = rpc.ChatServerStub(channel)
+            self.channel = grpc.insecure_channel(addr)
+            self.stub = rpc.ChatServerStub(self.channel)
 
         except:
             print("Could not connect to primary server. Check ip and port addresses.")
             exit(0)
 
+
+    def handle_connect(self, rn):
+        while True:
+            local = input(f"Are you running replica {rn} locally? (yes/no) ")
+            if local.lower() == 'no':
+                response = input(f"Server replica {rn} <IP address> <port>: ")
+                self.ip_ports[f"R{rn}"] = response.split()
+                break
+            elif local.lower() == 'yes':
+                response = input(f"Server replica {rn} <port>: ")
+                self.ip_ports[f"R{rn}"] = [self.address, response]
+                break
+            else:
+                continue
     
     # find the primary replica among current replicas, by choosing the least uuid
     # TODO: only perform leader election when the primary fails
     def leader_election(self):
+        print("[Leader election] electing leader...")
+        print(self.ip_ports)
         leader_uuid = ""
         original = self.primary
         for r in self.ip_ports:
@@ -88,12 +97,12 @@ class Client:
         if leader_uuid == "":
             print("No replicas available. Exiting...")
             exit(0)
-        elif original != self.primary:
-            # replace the stub
-            addr = str(self.ip_ports[self.primary][0]) + ":" + str(self.ip_ports[self.primary][1])
-            channel = grpc.insecure_channel(addr)
-            self.stub = rpc.ChatServerStub(channel)
-            print(f"[Leader election] stub changed: {self.primary}")
+        # elif original != self.primary:
+        #     # replace the stub
+        #     addr = str(self.ip_ports[self.primary][0]) + ":" + str(self.ip_ports[self.primary][1])
+        #     channel = grpc.insecure_channel(addr)
+        #     self.stub = rpc.ChatServerStub(channel)
+        #     print(f"[Leader election] stub changed: {self.primary}")
 
 
     # call to start everything: listening thread and the input thread
@@ -113,18 +122,21 @@ class Client:
 
 
     # TODO: make the current replica None, then switch to another replica
-    def switch_replica(self):
+    def switch_replica(self, new_server=False):
         print("[switch replica] switching replica from " + self.primary)
 
-        self.ip_ports[self.primary] = None
-        self.primary = None
+        if not new_server:
+            self.ip_ports[self.primary] = None
+            self.primary = None
 
         self.leader_election()
         
         try:
             addr = str(self.ip_ports[self.primary][0]) + ":" + str(self.ip_ports[self.primary][1])
-            channel = grpc.insecure_channel(addr)
-            self.stub = rpc.ChatServerStub(channel)
+            self.channel.close()
+            self.stub = None
+            self.channel = grpc.insecure_channel(addr)
+            self.stub = rpc.ChatServerStub(self.channel)
 
             print("[switch replica] stub changed! ")
         except:
@@ -138,24 +150,60 @@ class Client:
     def ping(self):
         while True:
             # print("[Ping] Pinging primary replica...")
-            time.sleep(5)
+            time.sleep(3)
 
             try:
-                response, status = self.stub.Ping.with_call(chat.Empty(), timeout=12)
-
-                print("\n")
-                print("[Ping] Primary replica is alive.")
-                print(response)
-                print("ip ports:")
-                print(self.ip_ports)
+                print("[Ping] Pinging primary replica " + self.primary)
+                # print(self.stub)
+                response, status = self.stub.Ping.with_call(chat.Empty(), timeout=3)
 
                 # check if there's replica update: if so, update ip_ports
-                if response.new_server:
-                    for r in self.ip_ports:
-                        if self.ip_ports[r] is None:
-                            self.ip_ports[r] = [response.ip, response.port]
-                            print(f"[Ping] {r} added to ip_ports")
-                            print(self.ip_ports)
+                if response.change:
+                            
+                    if response.new_server:
+                        # exist = False
+                        # for r in self.ip_ports:
+                        #     if self.ip_ports[r] and str(response.port) == self.ip_ports[r][1]:
+                        #         exist = True
+                        # if not exist:
+                        #     for r in self.ip_ports:
+                        #         if self.ip_ports[r] is None:
+                        #             self.ip_ports[r] = [response.ip, str(response.port)]
+                        #             print(f"[Ping] {r} added to ip_ports")
+                        #             print(self.ip_ports)
+                        if self.ip_ports["R1"] is None:
+                            self.ip_ports["R1"] = [response.ip, str(response.port)]
+                            self.leader_election()
+                            print(f"[Ping] stub changed: {self.primary}")
+                            addr = str(self.ip_ports["R1"][0]) + ":" + str(self.ip_ports["R1"][1])
+
+                            self.channel.close()
+                            self.stub = None
+                            channel = grpc.insecure_channel(addr)
+                            self.stub = rpc.ChatServerStub(channel)
+
+                        print('!!!')
+
+                        try: 
+                            response, status = self.stub.Ping.with_call(chat.Empty(), timeout=5)
+                        except grpc.RpcError as e:
+                            print(e)
+                            print("try again")
+                        
+                        try: 
+                            response, status = self.stub.Ping.with_call(chat.Empty(), timeout=5)
+                        except grpc.RpcError as e:
+                            print(e)
+                            print("try again")
+                        
+                    else:
+                        for r in self.ip_ports:
+                            if (self.ip_ports[r] and 
+                                self.ip_ports[r][0] == response.ip and 
+                                self.ip_ports[r][1] == response.port):
+                                self.ip_ports[r] = None
+                                print(f"[Ping] {r} removed from ip_ports")
+                                print(self.ip_ports)
                 print("End of Ping")
 
             except grpc.RpcError as e:
