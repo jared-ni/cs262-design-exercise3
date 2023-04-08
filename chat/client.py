@@ -29,6 +29,7 @@ class Client:
             "R2": None,
             "R3": None,
         }
+        # self.ip_ports ==
         self.primary = "R1"
 
         def handle_connect(rn):
@@ -57,16 +58,34 @@ class Client:
         print(self.ip_ports)
 
         try:
+            # connect to primary replica
+            self.leader_election()
             # create a gRPC channel + stub
-            addr = str(self.ip_ports["R1"][0]) + ":" + str(self.ip_ports["R1"][1])
+            addr = str(self.ip_ports[self.primary][0]) + ":" + str(self.ip_ports[self.primary][1])
             channel = grpc.insecure_channel(addr)
             self.stub = rpc.ChatServerStub(channel)
 
         except:
-            print("Could not connect to server. Check ip and port addresses.")
+            print("Could not connect to primary server. Check ip and port addresses.")
             exit(0)
 
     
+    # find the primary replica among current replicas, by choosing the least uuid
+    def leader_election(self):
+        leader_uuid = ""
+        for r in self.ip_ports:
+            if self.ip_ports[r] is not None:
+                uuid = str(self.ip_ports[r][0]) + "." + str(self.ip_ports[r][1])
+                if leader_uuid == "":
+                    leader_uuid = uuid
+                    self.primary = r
+                elif uuid < leader_uuid:
+                    leader_uuid = uuid
+                    self.primary = r
+        if leader_uuid == "":
+            print("No replicas available. Exiting...")
+            exit(0)
+
     # call to start everything: listening thread and the input thread
     def start(self):
         # create new listening thread for when new message streams come in
@@ -79,6 +98,25 @@ class Client:
         # TODO: check the type of message. If new replica, store it
         for note in self.stub.ChatStream(chat.Empty()):
             print(">[{}] {}".format(note.sender, note.message))
+
+
+    # make the current replica None, then switch to another replica
+    def switch_replica(self):
+        print("[switch replica] current primary: " + self.primary)
+        self.ip_ports[self.primary] = None
+        self.primary = None
+        self.leader_election()
+        
+        try:
+            addr = str(self.ip_ports[self.primary][0]) + ":" + str(self.ip_ports[self.primary][1])
+            channel = grpc.insecure_channel(addr)
+            self.stub = rpc.ChatServerStub(channel)
+            return True
+        except:
+            # try another replica
+            print("[switch replica] can't connect to replica; trying another replica...")
+            self.switch_replica()
+        return False
 
 
     # send message to server then to receiver
@@ -94,6 +132,7 @@ class Client:
         # TODO: get ACK, if not, server has failed, so choose another replica
         # response = self.stub.SendNote(n)
         try:
+            print("[primary: " + self.primary + "]")
             response, status = self.stub.SendNote.with_call(n, timeout=5)
             if not response.success:
                 print(response.message)
@@ -101,25 +140,12 @@ class Client:
             return True
         except grpc.RpcError as e:
             print("Server failed, trying another replica...")
-            self.switch_replica()
-    
-
-    # make the current replica None, then switch to another replica
-    def switch_replica(self):
-        self.ip_ports[self.primary] = None
-        for replica in self.ip_ports:
-            if self.ip_ports[replica] is not None:
-                self.primary = replica
-                break
-        try:
-            addr = str(self.ip_ports[self.primary][0]) + ":" + str(self.ip_ports[self.primary][1])
-            channel = grpc.insecure_channel(addr)
-            self.stub = rpc.ChatServerStub(channel)
-        except:
-            # try another replica
-            print("[switch replica] can't connect to replica; trying another replica...")
-            self.switch_replica()
-
+            # if no server is available, exit. Else, resend message
+            if not self.switch_replica():
+                print("All replicas failed. Exiting...")
+                exit(0)
+            else:
+                self.send_message(user, message)
 
     
     # register user

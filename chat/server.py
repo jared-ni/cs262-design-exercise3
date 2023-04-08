@@ -197,6 +197,7 @@ class ChatServer(rpc.ChatServerServicer):
     # Send a message to the server then to the receiver
     def SendNote(self, request: chat.Note, context):
         try: 
+            print("[SendNote] Received message from", request.sender)
             # check version
             if request.version != 1:
                 return chat.ServerResponse(success=False, message="[SERVER] Version mismatch")
@@ -215,6 +216,13 @@ class ChatServer(rpc.ChatServerServicer):
             # append to unread
             with self.users_lock:
                 self.users[request.receiver]['unread'].append(request)
+            
+            # commit log
+            if self.primary == "self":
+                with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
+                    commit_file.write(f"{request.sender} {request.receiver} {request.message}\n")
+
+            # success message
             return chat.ServerResponse(success=True, message="")
         
         except Exception as e:
