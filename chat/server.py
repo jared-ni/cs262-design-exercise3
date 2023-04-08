@@ -93,15 +93,22 @@ class ChatServer(rpc.ChatServerServicer):
             for rep in self.replica_stubs:
                 if self.replica_stubs[rep] is not None:
                     try:
-                        response, status = self.replica_stubs[rep].Ping.with_call(chat.Empty(), timeout=3)
+                        response, status = self.replica_stubs[rep].Ping.with_call(chat.Empty(), timeout=5)
                     except:
                         print(f"[Detect failure] Could not connect to replica {rep}")
+                        # TODO: inform client replica failed
+                        failed_replica = self.ip_ports[rep]
                         self.ip_ports[rep] = None
                         self.replica_stubs[rep] = None
                         # leader election
                         if rep == self.primary:
                             self.primary = "self"
                         self.leader_election()
+
+                        # inform clients of failed replica if current replica is primary
+                        if self.primary == "self":
+                            self.inform_client_new_replica(failed_replica, is_new=False)
+
                         print("[Detect failure] Replica", rep, "failed. New primary:", self.primary)
                         print(self.ip_ports)
 
@@ -109,6 +116,17 @@ class ChatServer(rpc.ChatServerServicer):
     def Ping(self, request: chat.Empty, context):
         print("[Ping] Received ping")
         return chat.ServerResponse(success=True, message="Pong")
+
+
+    def inform_client_new_replica(self, replica, is_new=True):
+        # For every client a infinite loop starts (in gRPC's own managed thread)
+        # operation code 8: FAILED, 9: NEW
+        op_code = 9 if is_new else 8
+        new_rep_notice = chat.Note(operation_code=op_code, message=f"{replica}")
+        for client in self.clients:
+            with self.users_lock:
+                self.users[client]['unread'].append(request)
+
 
     # find the primary replica among current replicas, by choosing the least uuid
     def leader_election(self):
@@ -147,6 +165,11 @@ class ChatServer(rpc.ChatServerServicer):
                     addr = str(self.ip_ports[rep][0]) + ":" + str(self.ip_ports[rep][1])
                     channel = grpc.insecure_channel(addr)
                     self.replica_stubs[rep] = rpc.ChatServerStub(channel)
+
+                    # TODO: inform every client of new replica
+                    if self.primary == "self":
+                        self.inform_client_new_replica(self.ip_ports[rep], is_new=True)
+
                     break
                 except:
                     print(f"[SendReplica] Could not connect to replica {rep}")
@@ -154,6 +177,7 @@ class ChatServer(rpc.ChatServerServicer):
                     self.replica_stubs[rep] = None
         # leader election
         self.leader_election()
+
         print("[SendReplica] Received replica message")
         print(self.ip_ports)
 
