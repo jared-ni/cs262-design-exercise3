@@ -92,10 +92,12 @@ class ChatServer(rpc.ChatServerServicer):
         print(self.ip_ports)
 
         # TODO: add database
-        self.db = sqlite3.connect(f"chat_{self.port}.db")
+        self.db = sqlite3.connect(f"chat_{self.port}.db", check_same_thread=False)
         self.cursor = self.db.cursor()
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS users (username text, password text)''')
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS chat_history (username text, message text)''')
+        self.cursor.execute('''CREATE TABLE IF NOT EXISTS users(username text, password text)''')
+        self.cursor.execute('''CREATE TABLE IF NOT EXISTS chat_history (sender text, receiver text, message text)''')
+
+        self.db.commit()
 
 
     # periodically check if replicas are still alive
@@ -158,7 +160,6 @@ class ChatServer(rpc.ChatServerServicer):
         print("[Leader election] New primary replica: " + self.primary)
         
 
-    
     def replica_message(self):
         print("[Replica message] Sending replica message")
         n = chat.ReplicaMessage(ip=self.address, port=self.port)
@@ -166,15 +167,6 @@ class ChatServer(rpc.ChatServerServicer):
             if self.replica_stubs[rep] is not None:
                 response = self.replica_stubs[rep].SendReplica(n)
                 print("[Replica message] Sent replica message to", rep)
-                # try:
-                #     print("[Replica message] Sending replica message to", rep)
-                #     print(n.ip, n.port)
-                #     # response, status = self.replica_stubs[rep].SendReplica.with_call(n, timeout=5)
-                # except:
-                #     print(f"[Replica message] Could not connect to replica {rep}")
-                #     self.ip_ports[rep] = None
-                #     self.replica_stubs[rep] = None
-        # leader election
         self.leader_election()
 
 
@@ -190,7 +182,6 @@ class ChatServer(rpc.ChatServerServicer):
                 self.replica_stubs[rep] = rpc.ChatServerStub(channel)
                 print("[SendReplica] Connected to replica")
                 print(self.ip_ports)
-
 
                 # if self.primary == "self":
                 self.inform_client_new_replica(self.ip_ports[rep], is_new=True)
@@ -223,34 +214,34 @@ class ChatServer(rpc.ChatServerServicer):
         print("[Inform client] Informing clients of new replica")
 
 
-    # The stream which will be used to send new messages to clients
-    def ChatStream(self, _request_iterator, context):
-        # For every client a infinite loop starts (in gRPC's own managed thread)
-        user = None
-        while True:
-            try: 
-                if context.peer() in self.clients:
-                    user = self.clients[context.peer()]
-                if not user:
-                    continue
-                # Check if there are any new messages if logged in
-                while len(self.users[user]['unread']) > 0:
-                    message = self.users[user]['unread'].popleft()
+    # # TODO: 
+    # # The stream which will be used to send new messages to clients
+    # def ChatStream(self, _request_iterator, context):
+    #     # For every client a infinite loop starts (in gRPC's own managed thread)
+    #     user = None
+    #     while True:
+    #         try: 
+    #             if context.peer() in self.clients:
+    #                 user = self.clients[context.peer()]
+    #             if not user:
+    #                 continue
+    #             # Check if there are any new messages if logged in
+    #             while len(self.users[user]['unread']) > 0:
+    #                 message = self.users[user]['unread'].popleft()
     
-                    # store message into database
-                    self.cursor.execute("INSERT INTO messages (sender, receiver, message) VALUES (%s, %s, %s)", (message.sender, message.receiver, message.message))
+    #                 # store message into database
+    #                 # self.cursor.execute("INSERT INTO chat_history (sender, receiver, message) VALUES (%s, %s, %s)", (message.sender, message.receiver, message.message))
+
+    #                 yield message
 
 
-                    yield message
-
-
-            except IOError as e:
-                # ignore recoverable EAGAIN and EWOULDBLOCK error
-                if e.errno == errno.EAGAIN and e.errno == errno.EWOULDBLOCK:
-                    continue
-            except Exception as e:
-                print(e)
-                yield chat.ServerResponse(success=False, message="[SERVER] Error sending message")
+    #         except IOError as e:
+    #             # ignore recoverable EAGAIN and EWOULDBLOCK error
+    #             if e.errno == errno.EAGAIN and e.errno == errno.EWOULDBLOCK:
+    #                 continue
+    #         except Exception as e:
+    #             print(e)
+    #             yield chat.ServerResponse(success=False, message="[SERVER] Error sending message")
     
 
     def ChatSingle(self, request, context):
@@ -259,6 +250,7 @@ class ChatServer(rpc.ChatServerServicer):
             user = self.clients[context.peer()]
         # if not user:
         #     return chat.ServerResponse(success=False, message="[SERVER] Error sending message")
+        
         
         # Check if there are any new messages if logged in
         if user in self.users and len(self.users[user]['unread']) > 0:
@@ -284,9 +276,11 @@ class ChatServer(rpc.ChatServerServicer):
             # check version
             if request.version != 1:
                 return chat.ServerResponse(success=False, message="[SERVER] Version mismatch")
-            
+
             # check if the user is logged in
             current_user = None
+
+
             if context.peer() in self.clients:
                 current_user = self.clients[context.peer()]
             if current_user is None or not current_user:
@@ -300,12 +294,20 @@ class ChatServer(rpc.ChatServerServicer):
             with self.users_lock:
                 self.users[request.receiver]['unread'].append(request)
             
-            # commit log
-            if self.primary == "self":
-                with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
-                    commit_file.write(f"send~{context.peer()}~{request.version}~{request.sender}~{request.receiver}~{request.message}\n")
+            # # commit log
+            # if self.primary == "self":
+            #     with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
+            #         commit_file.write(f"send~{context.peer()}~{request.version}~{request.sender}~{request.receiver}~{request.message}\n")
 
             # success message
+            # send the same message to other replica, asynchronusly
+
+            # if self.primary == "self":
+            #     for rep in self.replica_stubs:
+            #         self.replica_stubs[rep].SendNote.future(request)
+
+            
+
             return chat.ServerResponse(success=True, message="")
         
         except Exception as e:
@@ -315,79 +317,113 @@ class ChatServer(rpc.ChatServerServicer):
     
     # Acount Creaton
     def CreateAccount(self, request: chat.AccountInfo, context):
-        try: 
-            # Check if the username is already taken
-            if request.username in self.users:
-                return chat.ServerResponse(success=False, message="[SERVER] Username already taken")
-            # Create the account
-            with self.users_lock:
-                self.users[request.username] = {
-                    "password": self.hash_password(request.password), 
-                    "client": None,
-                    "logged_in": False,
-                    "unread": deque()
-                }
-            # success message
-            # commit log
-            # if self.primary == "self":
-            #     with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
-            #         commit_file.write(f"create~{request.username}~{request.password}\n")
+        # try: 
+        # Check if the username is already taken in db
+        self.cursor.execute('''SELECT * FROM users WHERE username = ?''', (request.username,))
+        user = self.cursor.fetchone()
+        if user or request.username in self.users:
+            return chat.ServerResponse(success=False, message="[SERVER] Username already taken")
 
-            # insert into database
-            self.cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)", (request.username, self.users[request.username]['password']))
+        # Create the account
+        with self.users_lock:
+            self.users[request.username] = {
+                "password": self.hash_password(request.password), 
+                "client": None,
+                "logged_in": False,
+                "unread": deque()
+            }
+        # success message
+        # commit log
+        # if self.primary == "self":
+        #     with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
+        #         commit_file.write(f"create~{request.username}~{request.password}\n")
 
-            return chat.ServerResponse(success=True, message=f"[SERVER] Account {request.username} created")
+        # insert into database
+        self.cursor.execute('''INSERT INTO users (username, password) VALUES (?, ?)''', 
+                            (request.username, self.hash_password(request.password)))
+        self.db.commit()
+
+        return chat.ServerResponse(success=True, message=f"[SERVER] Account {request.username} created")
         
-        except Exception as e:
-            print(e)
-            return chat.ServerResponse(success=False, message="[SERVER] Error creating account")
+        # except Exception as e:
+        #     print(e)
+        #     return chat.ServerResponse(success=False, message="[SERVER] Error creating account")
     
 
     # Account Login: a client must be logged in on one device at a time, else they are logged out of previous device
     def Login(self, request: chat.AccountInfo, context):
-        try: 
-            # Check if the username exists
-            if request.username not in self.users:
-                return chat.ServerResponse(success=False, message="[SERVER] Username does not exist")
-            # Check if the password is correct
-            if not self.check_password(request.password, self.users[request.username]['password']):
-                return chat.ServerResponse(success=False, message="[SERVER] Incorrect password")
-            # warn previous client of the user account if logged in on new client
-            if request.username in self.users and self.users[request.username]["client"] is not None:
-                detection = chat.Note(message = f"Logged out: detected {request.username} login on another client.")
-                self.users[request.username]["unread"].append(detection)
-                # wait for previous client to get message
-                time.sleep(1)
-                prev_client = self.users[request.username]["client"]
-                with self.clients_lock:
-                    self.clients[prev_client] = None
-                
-            # Logout previous user
-            if context.peer() in self.clients and self.clients[context.peer()] is not None:
-                prev_user = self.clients[context.peer()]
-                with self.users_lock:
-                    self.users[prev_user]["logged_in"] = False
-                    self.users[prev_user]["client"] = None
+        # try: 
+        # Check if the username exists
+        # check if username exists in database
+        self.cursor.execute("SELECT * FROM users WHERE username = ?", (request.username,))
+        user = self.cursor.fetchone()
 
-            # login new user
+        print(user)
+
+        if user is None:
+            return chat.ServerResponse(success=False, message="[SERVER] Username does not exist")
+
+        # if request.username not in self.users:
+        #     return chat.ServerResponse(success=False, message="[SERVER] Username does not exist")
+
+        # Check if the password is correct in database
+        if not self.check_password(request.password, user[1]):
+            return chat.ServerResponse(success=False, message="[SERVER] Incorrect password")
+        
+        # if not self.check_password(request.password, self.users[request.username]['password']):
+        #     return chat.ServerResponse(success=False, message="[SERVER] Incorrect password")
+
+        # warn previous client of the user account if logged in on new client
+        if request.username in self.users and self.users[request.username]["client"] is not None:
+            detection = chat.Note(message = f"Logged out: detected {request.username} login on another client.")
+            self.users[request.username]["unread"].append(detection)
+            # wait for previous client to get message
+            time.sleep(1)
+            prev_client = self.users[request.username]["client"]
             with self.clients_lock:
-                self.clients[context.peer()] = request.username
+                self.clients[prev_client] = None
+            
+        # # Logout previous user
+        if context.peer() in self.clients and self.clients[context.peer()] is not None:
+            prev_user = self.clients[context.peer()]
             with self.users_lock:
+                self.users[prev_user]["logged_in"] = False
+                self.users[prev_user]["client"] = None
+
+        # # login new user
+        print(self.users)
+
+        with self.clients_lock:
+            self.clients[context.peer()] = request.username
+        with self.users_lock:
+            if request.username in self.users:
                 self.users[request.username]['client'] = context.peer()
                 self.users[request.username]['logged_in'] = True
-            # successfully logged in
+            else:
+                self.users[request.username] = {
+                    "client": None,
+                    "logged_in": True,
+                    "unread": deque()
+                }
 
-            # commit log
-            if self.primary == "self":
-                with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
-                    commit_file.write(f"login~{context.peer()}~{request.username}~{request.password}\n")
+        # successfully logged in
+        # login on replicas 
+        if self.primary == "self":
+            for rep in self.replica_stubs:
+                if self.replica_stubs[rep] is not None:
+                    self.replica_stubs[rep].Login(request)
+
+        # commit log
+        # if self.primary == "self":
+        #     with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
+        #         commit_file.write(f"login~{context.peer()}~{request.username}~{request.password}\n")
 
 
-            return chat.ServerResponse(success=True, message=f"[SERVER] Logged in as {request.username}")
+        return chat.ServerResponse(success=True, message=f"[SERVER] Logged in as {request.username}")
         
-        except Exception as e:
-            print(e)
-            return chat.ServerResponse(success=False, message="[SERVER] Error logging in")
+        # except Exception as e:
+        #     print(e)
+        #     return chat.ServerResponse(success=False, message="[SERVER] Error logging in")
 
 
     # Account Logout of the current client
@@ -404,10 +440,16 @@ class ChatServer(rpc.ChatServerServicer):
         with self.clients_lock:
             self.clients[context.peer()] = None
 
-        # commit log
+        # logout on replicas
         if self.primary == "self":
-            with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
-                commit_file.write(f"logout~{context.peer()}\n")
+            for rep in self.replica_stubs:
+                if self.replica_stubs[rep] is not None:
+                    self.replica_stubs[rep].Logout(request)
+
+        # commit log
+        # if self.primary == "self":
+        #     with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
+        #         commit_file.write(f"logout~{context.peer()}\n")
 
 
         return chat.ServerResponse(success=True, message=f"[SERVER] Logged out of user {username}")
@@ -415,55 +457,67 @@ class ChatServer(rpc.ChatServerServicer):
 
     # Account list
     def ListAccounts(self, request: chat.AccountInfo, context):
-        # Lists all users in the users dict
-        # for user in self.users.keys():
-        #     if request.username == "*" or not request.username or request.username in user:
-        #         yield chat.ServerResponse(success=True, message=f"{user}")
-        
         # list all accounts in data
         self.cursor.execute("SELECT username FROM users")
         for user in self.cursor.fetchall():
             if request.username == "*" or not request.username or request.username in user:
-                yield chat.ServerResponse(success=True, message=f"{user}")
+                yield chat.ServerResponse(success=True, message=f"{user[0]}")
 
 
     # Account delete
     def DeleteAccount(self, request: chat.AccountInfo, context):
-        try: 
-            # Check if the username exists: return if not
-            if request.username not in self.users:
-                yield chat.ServerResponse(success=False, message="[SERVER] Username does not exist")
-                return
-            # Check if the password is correct: return if incorrect
-            if not self.check_password(request.password, self.users[request.username]['password']):
-                yield chat.ServerResponse(success=False, message=f"[SERVER] Incorrect password for account {request.username}")
-                return
-            # Yield success message before actual deletion so user can be logout
-            yield chat.ServerResponse(success=True, message="")
-                
-            # warn the currently logged in client on the deleted account
-            prev_client = self.users[request.username]["client"]
-            if prev_client is not None:
-                detection = chat.Note(message = f"Logged out: account {request.username} has been deleted.")
-                with self.users_lock:
-                    self.users[request.username]["unread"].append(detection)
-                with self.clients_lock:
-                    self.clients[prev_client] = None
-            with self.users_lock:
-                del self.users[request.username]
-
-            # actual account deletion detection
-            if self.primary == "self":
-                with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
-                    commit_file.write(f"logout~{context.peer()}~{request.username}~{request.password}\n")
-
-
-            yield chat.ServerResponse(success=True, message=f"[SERVER] Account {request.username} deleted")
+        # try: 
+        # Check if the username exists: return if not
+        # get all users from database
+        self.cursor.execute("SELECT * FROM users WHERE username = ?", (request.username,))
+        user = self.cursor.fetchone()
+        print()
+        if not user:
+            yield chat.ServerResponse(success=False, message="[SERVER] Username does not exist")
             return
-        except KeyError or ValueError:
-            return chat.ServerResponse(success=False, message="[SERVER] Failed: make sure information is entered correctly")
-        except Exception as e:
-            return chat.ServerResponse(success=False, message=f"[SERVER] Failed: {e}")
+        
+        # # Check if the password is correct: return if incorrect
+        if not self.check_password(request.password, user[1]):
+            yield chat.ServerResponse(success=False, message=f"[SERVER] Incorrect password for account {request.username}")
+            return
+        
+        # actual account deletion detection
+        # if self.primary == "self":
+        #     with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
+        #         commit_file.write(f"logout~{context.peer()}~{request.username}~{request.password}\n")
+
+        # delete on replicas
+        if self.primary == "self":
+            for rep in self.replica_stubs:
+                if self.replica_stubs[rep] is not None:
+                    self.replica_stubs[rep].DeleteAccount(request)
+
+        # Yield success message before actual deletion so user can be logout
+        yield chat.ServerResponse(success=True, message="")  
+        # warn the currently logged in client on the deleted account
+        print(self.users)
+        
+        prev_client = self.users[request.username]["client"]
+        if prev_client is not None:
+            detection = chat.Note(message = f"Logged out: account {request.username} has been deleted.")
+            with self.users_lock:
+                self.users[request.username]["unread"].append(detection)
+            with self.clients_lock:
+                self.clients[prev_client] = None
+        with self.users_lock:
+            del self.users[request.username]
+        
+        # delete from database
+        self.cursor.execute("DELETE FROM users WHERE username = ?", (request.username,))
+        self.db.commit()
+        
+        yield chat.ServerResponse(success=True, message=f"[SERVER] Account {request.username} deleted")
+        return
+        
+        # except KeyError or ValueError:
+        #     return chat.ServerResponse(success=False, message="[SERVER] Failed: make sure information is entered correctly")
+        # except Exception as e:
+        #     return chat.ServerResponse(success=False, message=f"[SERVER] Failed: {e}")
 
 
 # main thread for handling clients
