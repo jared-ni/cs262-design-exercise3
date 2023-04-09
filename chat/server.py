@@ -96,6 +96,7 @@ class ChatServer(rpc.ChatServerServicer):
         self.cursor = self.db.cursor()
         self.cursor.execute('''CREATE TABLE IF NOT EXISTS users(username text, password text)''')
         self.cursor.execute('''CREATE TABLE IF NOT EXISTS chat_history (sender text, receiver text, message text)''')
+        self.cursor.execute('''CREATE TABLE IF NOT EXISTS unread (sender text, receiver text, message text)''')
 
         self.db.commit()
 
@@ -271,48 +272,61 @@ class ChatServer(rpc.ChatServerServicer):
 
     # Send a message to the server then to the receiver
     def SendNote(self, request: chat.Note, context):
-        try: 
-            print("[SendNote] Received message from", request.sender)
-            # check version
-            if request.version != 1:
-                return chat.ServerResponse(success=False, message="[SERVER] Version mismatch")
+        # try: 
+        print("[SendNote] Received message from", request.sender)
+        # check version
+        if request.version != 1:
+            return chat.ServerResponse(success=False, message="[SERVER] Version mismatch")
 
-            # check if the user is logged in
-            current_user = None
+        # check if the user is logged in
+        current_user = None
 
+        if context.peer() in self.clients:
+            current_user = self.clients[context.peer()]
+        if current_user is None or not current_user:
+            return chat.ServerResponse(success=False, message="[SERVER] You are not logged in")
 
-            if context.peer() in self.clients:
-                current_user = self.clients[context.peer()]
-            if current_user is None or not current_user:
-                return chat.ServerResponse(success=False, message="[SERVER] You are not logged in")
+        # Check if the receiver exists in the database
 
-            # Check if the receiver exists
-            if request.receiver not in self.users:
-                return chat.ServerResponse(success=False, message="[SERVER] User does not exist")
-            
-            # append to unread
-            with self.users_lock:
-                self.users[request.receiver]['unread'].append(request)
-            
-            # # commit log
-            # if self.primary == "self":
-            #     with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
-            #         commit_file.write(f"send~{context.peer()}~{request.version}~{request.sender}~{request.receiver}~{request.message}\n")
-
-            # success message
-            # send the same message to other replica, asynchronusly
-
-            # if self.primary == "self":
-            #     for rep in self.replica_stubs:
-            #         self.replica_stubs[rep].SendNote.future(request)
-
-            
-
-            return chat.ServerResponse(success=True, message="")
+        self.cursor.execute("SELECT * FROM users WHERE username = ?", (request.receiver,))
+        receiver = self.cursor.fetchone()
+        if receiver is None:
+            return chat.ServerResponse(success=False, message="[SERVER] User does not exist")
         
-        except Exception as e:
-            print(e)
-            return chat.ServerResponse(success=False, message="[SERVER] Error sending message")
+        # # commit log
+        # if self.primary == "self":
+        #     with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
+        #         commit_file.write(f"send~{context.peer()}~{request.version}~{request.sender}~{request.receiver}~{request.message}\n")
+
+        # success message
+        # send the same message to other replica
+        if self.primary == "self":
+            for rep in self.replica_stubs:
+                if self.replica_stubs[rep] is not None:
+                    self.replica_stubs[rep].SendNote(request)
+
+        # commit to database
+        self.cursor.execute("INSERT INTO chat_history (sender, receiver, message) VALUES (?, ?, ?)", 
+                            (request.sender, request.receiver, request.message))
+        self.db.commit()
+
+        # append to unread
+        if self.primary == "self":
+            if request.receiver in self.users:
+                with self.users_lock:
+                    self.users[request.receiver]['unread'].append(request)
+            else:
+                # push to unread database if user is not logged in
+                self.cursor.execute("INSERT INTO unread (sender, receiver, message) VALUES (?, ?, ?)", 
+                                    (current_user, request.receiver, request.message))
+                self.db.commit()
+
+
+        return chat.ServerResponse(success=True, message="")
+        
+        # except Exception as e:
+        #     print(e)
+        #     return chat.ServerResponse(success=False, message="[SERVER] Error sending message")
     
     
     # Acount Creaton
@@ -332,6 +346,7 @@ class ChatServer(rpc.ChatServerServicer):
                 "logged_in": False,
                 "unread": deque()
             }
+
         # success message
         # commit log
         # if self.primary == "self":
@@ -374,6 +389,10 @@ class ChatServer(rpc.ChatServerServicer):
         #     return chat.ServerResponse(success=False, message="[SERVER] Incorrect password")
 
         # warn previous client of the user account if logged in on new client
+
+        print("currently logged in:")
+        print(self.users)
+
         if request.username in self.users and self.users[request.username]["client"] is not None:
             detection = chat.Note(message = f"Logged out: detected {request.username} login on another client.")
             self.users[request.username]["unread"].append(detection)
@@ -401,10 +420,22 @@ class ChatServer(rpc.ChatServerServicer):
                 self.users[request.username]['logged_in'] = True
             else:
                 self.users[request.username] = {
-                    "client": None,
+                    "client": context.peer(),
                     "logged_in": True,
                     "unread": deque()
                 }
+                # push unread messages to user
+                self.cursor.execute("SELECT * FROM unread WHERE receiver = ?", (request.username,))
+                unread = self.cursor.fetchall()
+                for msg in unread:
+                    self.users[request.username]['unread'].append(chat.Note(
+                        sender=msg[0], receiver=msg[1], message=msg[2]
+                    ))
+                    # delete unread messages from database
+                    self.cursor.execute("DELETE FROM unread WHERE sender = ? AND receiver = ? AND message = ?", 
+                                        (msg[0], msg[1], msg[2]))
+                    self.db.commit()
+
 
         # successfully logged in
         # login on replicas 
