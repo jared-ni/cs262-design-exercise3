@@ -41,8 +41,8 @@ class Client:
         # configure server address, if on Jared's Mac, try 10.250.151.166
         try:
             self.handle_connect("1")
-            self.handle_connect("2")
-            self.handle_connect("3")
+            # self.handle_connect("2")
+            # self.handle_connect("3")
         except KeyboardInterrupt:
             print("\n[DISCONNECTED]")
             exit(0)
