@@ -1,9 +1,15 @@
 # Engineering Notebook
 
-## 03/06
+## 04/06
 We made the decision to use the gRPC implementation design problem 1 instead of our own defined protocol implementation using sockets because we feel that the abstraction and transparency of the sending and deciphering messages between server and client was efficient as it was not the focus on this design problem. We also thought that it would be easier to implement this abstraction meant that the code for the gRPC version could be easily kept more cleaner as we implemented replication with several servers and multiple clients. Overall, we went along with the gRPC version to implement replication because of the level of abstraction that hides away the details of message sending and receiving, which would ultimately make having to implement replication of this chat app easier, both as a coder and as a code reviewer.
 
-## 03/07
-We first went about trying to implement the system being 2-fault tolerant in the face of crash/failstop failures. We first initialized 3 servers/replicas, which knew each others port numbers such that they could communicate among one another. As per the advice of Varun during section, we decided to use the Master-Slave/Primaray-Secondary model for inter-server communication
+## 04/07
+We first went about trying to implement the system being 2-fault tolerant in the face of crash/failstop failures. We first initialized 3 servers/replicas, which knew each others port numbers such that they could communicate among one another. As per the advice of Varun during section, we decided to use the Master-Slave/Primary-Secondary model for inter-server communicationas this would be the most appropriate model given the scope of this project. In order to test the server's ability to communicate amongst themselves, we first implemented a "ping" function that would send a messsage to other servers, checking to see if the other servers have received the ping. We believe that this will be useful for debugging purposes. Each replica will check periodically to see if any of the other replicas are down. If one is down, we rerun the leader election, which is described more below.
 
-We implemented a "ping" function that would send a messsage to other servers, checking if 
+For the leader election process to determien the primary replica, the primary replica was determined as the server with the lowest uuid. This made it the easiest and fastest to select a new primary replica whenever one server went down. We ran the leader election in two cases: first, when all the replicas were connected initially, and two, in the case of a server failture, only when the failed replica was the primary which made things faster in general. 
+
+For the client side of the chat app, the Primary-Secondary model meant that all clients were connected to the primary replica at any moment and communicated with the primary replica to use the chat app. The simple leader election made it such that any client that connected to the app could quickly determine the leader via the lowest uuid. The client also has a ping function that pings the server it thinks is the primary replica periodically. If the primary replica is still the same server, it does nothing and continues pinging. If there is an update on the primary replica, we update the ports accordingly and switch to the new primary replica. The listening for messages from the server is essentially kept the same from design exercise 1 since we're listening to one server, which was an abstraction we believed is appropriate.
+
+## 04/08
+We describe some of the debugging problems we ran into while implementing 2-fault tolerance:
+
