@@ -286,8 +286,7 @@ class ChatServer(rpc.ChatServerServicer):
         if request.version != 1:
             return chat.ServerResponse(success=False, message="[SERVER] Version mismatch")
 
-        # check if the user is logged in
-        current_user = None
+        
 
         print("[SendNote] Current clients:")
         print(self.clients)
@@ -295,8 +294,35 @@ class ChatServer(rpc.ChatServerServicer):
         print(self.users)
         print("current context: " + str(context.peer()))
 
+
+        # check if the user is logged in
+        current_user = None
         if context.peer() in self.clients:
             current_user = self.clients[context.peer()]
+
+        # check if the username is in the current usernames
+        elif request.username in self.users:
+            print("!!!")
+            current_user = request.sender
+            # change client address
+            with self.clients_lock:
+                for client in self.clients:
+                    if self.clients[client] == current_user:
+                        del self.clients[client]
+                        break
+                self.clients[context.peer()] = current_user
+            # change user address
+            with self.users_lock:
+                self.users[current_user]['address'] = context.peer()
+        
+        print("Second check")
+        print("[SendNote] Current clients:")
+        print(self.clients)
+        print("[SendNote] Current users:")
+        print(self.users)
+        print("current context: " + str(context.peer()))
+            
+
         if current_user is None or not current_user:
             return chat.ServerResponse(success=False, message="[SERVER] You are not logged in")
 

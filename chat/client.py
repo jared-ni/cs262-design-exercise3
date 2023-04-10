@@ -190,6 +190,7 @@ class Client:
         n.sender = self.username
         n.receiver = user
         n.message = message
+        
 
         print(self.ip_ports)
         try:

@@ -11,7 +11,6 @@ message Note {
     string sender = 3;
 	string receiver = 4;
     string message = 5;
-	string username = 6;
 }
 
 // denotes a response from the server

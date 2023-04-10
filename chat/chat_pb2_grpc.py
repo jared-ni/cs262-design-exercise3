@@ -47,7 +47,7 @@ class ChatServerStub(object):
                 )
         self.Logout = channel.unary_unary(
                 '/chat.ChatServer/Logout',
-                request_serializer=chat__pb2.Empty.SerializeToString,
+                request_serializer=chat__pb2.AccountInfo.SerializeToString,
                 response_deserializer=chat__pb2.ServerResponse.FromString,
                 )
         self.ListAccounts = channel.unary_stream(
@@ -206,7 +206,7 @@ def add_ChatServerServicer_to_server(servicer, server):
             ),
             'Logout': grpc.unary_unary_rpc_method_handler(
                     servicer.Logout,
-                    request_deserializer=chat__pb2.Empty.FromString,
+                    request_deserializer=chat__pb2.AccountInfo.FromString,
                     response_serializer=chat__pb2.ServerResponse.SerializeToString,
             ),
             'ListAccounts': grpc.unary_stream_rpc_method_handler(
@@ -364,7 +364,7 @@ class ChatServer(object):
             timeout=None,
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/chat.ChatServer/Logout',
-            chat__pb2.Empty.SerializeToString,
+            chat__pb2.AccountInfo.SerializeToString,
             chat__pb2.ServerResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
