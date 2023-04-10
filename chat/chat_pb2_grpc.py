@@ -80,6 +80,11 @@ class ChatServerStub(object):
                 request_serializer=chat__pb2.DataRequest.SerializeToString,
                 response_deserializer=chat__pb2.DataResponse.FromString,
                 )
+        self.SendFile = channel.unary_stream(
+                '/chat.ChatServer/SendFile',
+                request_serializer=chat__pb2.FileRequest.SerializeToString,
+                response_deserializer=chat__pb2.ServerResponse.FromString,
+                )
 
 
 class ChatServerServicer(object):
@@ -171,6 +176,12 @@ class ChatServerServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def SendFile(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ChatServerServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -238,6 +249,11 @@ def add_ChatServerServicer_to_server(servicer, server):
                     servicer.GetData,
                     request_deserializer=chat__pb2.DataRequest.FromString,
                     response_serializer=chat__pb2.DataResponse.SerializeToString,
+            ),
+            'SendFile': grpc.unary_stream_rpc_method_handler(
+                    servicer.SendFile,
+                    request_deserializer=chat__pb2.FileRequest.FromString,
+                    response_serializer=chat__pb2.ServerResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -468,5 +484,22 @@ class ChatServer(object):
         return grpc.experimental.unary_unary(request, target, '/chat.ChatServer/GetData',
             chat__pb2.DataRequest.SerializeToString,
             chat__pb2.DataResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def SendFile(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(request, target, '/chat.ChatServer/SendFile',
+            chat__pb2.FileRequest.SerializeToString,
+            chat__pb2.ServerResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

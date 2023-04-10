@@ -53,6 +53,11 @@ message DataResponse {
 	repeated string rows = 1;
 }
 
+message FileRequest {
+	string filename = 1;
+	bytes content = 2;
+}
+
 // The ChatServer service definition.
 service ChatServer {
     // bi-directional stream for chat streaming between server and client
@@ -78,7 +83,7 @@ service ChatServer {
 
 	rpc GetData (DataRequest) returns (DataResponse){}
 
-
+	rpc SendFile(FileRequest) returns (stream ServerResponse){}
 
 }
 

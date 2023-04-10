@@ -77,6 +77,29 @@ class ChatServer(rpc.ChatServerServicer):
                     continue
         
         try: 
+
+            print("Server address:", self.address)
+            print("Server port:", self.port)
+            print(self.ip_ports)
+
+            # TODO: add database
+
+            # add commit log 
+            with open(f"commit_{self.address}_{self.port}.txt", "a") as f:
+                f.write("")
+            
+            self.db = sqlite3.connect(f"chat_{self.port}.db", check_same_thread=False)
+            self.cursor = self.db.cursor()
+            self.cursor.execute('''CREATE TABLE IF NOT EXISTS users(username text, password text)''')
+            self.cursor.execute('''CREATE TABLE IF NOT EXISTS chat_history (sender text, receiver text, message text)''')
+            self.cursor.execute('''CREATE TABLE IF NOT EXISTS unread (sender text, receiver text, message text)''')
+            # make counter_name unique
+            self.cursor.execute('''CREATE TABLE IF NOT EXISTS commit_count (count integer, counter_name text UNIQUE)''')
+            # add a row named "counter" to commit_count table if it doesn't exist
+            self.cursor.execute('''INSERT OR IGNORE INTO commit_count (count, counter_name) VALUES (0, "counter")''')
+            self.db.commit()
+
+
             for i in range(1, prior_replicas + 1):
                 handle_connect(i)
                 # connect to replica
@@ -94,25 +117,39 @@ class ChatServer(rpc.ChatServerServicer):
 
         # start thread to detect failures
         threading.Thread(target=self.detect_failure, daemon=True).start()
+
+
+        # sync commit logs with replicas
+        for rep in self.ip_ports:
+            if self.ip_ports[rep] is not None and rep != "self":
+                addr, port = self.ip_ports[rep]
+                stub = self.replica_stubs[rep]
+
+                self.receive_file(stub, f"commit_{addr}_{port}.txt")
+
+                
         
+    def receive_file(self, stub, filename):
+        print("Receiving file", filename)
+        request = chat.FileRequest(filename=filename)
+        response_iterator = stub.SendFile(request)
 
-        print("Server address:", self.address)
-        print("Server port:", self.port)
-        print(self.ip_ports)
+        for res in response_iterator:
+            print(res.message)
+            commit_num, commit = res.message.split("~")
 
-        # TODO: add database
-        self.db = sqlite3.connect(f"chat_{self.port}.db", check_same_thread=False)
-        self.cursor = self.db.cursor()
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS users(username text, password text)''')
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS chat_history (sender text, receiver text, message text)''')
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS unread (sender text, receiver text, message text)''')
-        # make counter_name unique
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS commit_count (count integer, counter_name text UNIQUE)''')
-        # add a row named "counter" to commit_count table if it doesn't exist
-        self.cursor.execute('''INSERT OR IGNORE INTO commit_count (count, counter_name) VALUES (0, "counter")''')
+            print("commit_num", commit_num)
+            print("commit", commit)
+        
+    
 
-        self.db.commit()
+    def SendFile(self, request, context):
 
+        with open(request.filename, 'r') as f:
+            for line in f:
+                response = chat.ServerResponse(success=True, message=line)
+                yield response
+        
 
     # periodically check if replicas are still alive
     def detect_failure(self):
