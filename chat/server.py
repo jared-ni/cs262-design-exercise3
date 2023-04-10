@@ -465,7 +465,7 @@ class ChatServer(rpc.ChatServerServicer):
 
         # log into the commit log
         with open(f"commit_{self.address}_{self.port}.txt", "a") as f:
-            f.write(f"{counter}~INSERT INTO users (username, password) VALUES ('{request.username}', '{self.hash_password(request.password)}')\n")
+            f.write(f"{counter}~INSERT INTO users (username, password) VALUES ('{request.username}', \"{self.hash_password(request.password)}\")\n")
         
 
         # send to other replica
