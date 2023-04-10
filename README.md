@@ -52,13 +52,19 @@ terminal in the format **([\<username\>] \<message\>)**.
 For running unit testts,s open up a terminal and nagivate to the 
 directory containing server.py and client.py. Start the servers by typing
 ```bash
-python server.py <port>
+python server.py 12350
 ```
-where <port> is the port that you want to server to connect on, and follow instructions to correctly set up this replica with other replicas.
+```bash
+python server.py 12351
+```
+```bash
+python server.py 12352
+```
+as the unit tests were written with the server ports being 12345, 12346, and 12347.
 
 Now, open up another terminal and nagivate to the same directory and type
 ```bash
-python -m unittest test_chat_gclient.py
+python -m unittest client.py
 ```
 This will run all unit tests, testing individual functions of client.py and making
 sure that messages are sent correctly from client to server to client.
