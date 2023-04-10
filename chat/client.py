@@ -111,13 +111,6 @@ class Client:
 
 
     # listening thread for incoming messages from other users
-    # def __listen_for_messages(self):
-    #     while True:
-    #         # TODO: check the type of message. If new replica, store it
-    #         for note in self.stub.ChatStream(chat.Empty()):
-    #             print(">[{}] {}".format(note.sender, note.message))
-    #         print("NOW LISTENING")
-    #         time.sleep(2)
     def __listen_for_messages(self):
         while True:
             # TODO: check the type of message. If new replica, store it
@@ -162,7 +155,6 @@ class Client:
     # Everytime ping: listen for possible updates
     def ping(self):
         while True:
-            # print("[Ping] Pinging primary replica...")
             time.sleep(1)
             try:
                 response, status = self.stub.Ping.with_call(chat.AccountInfo(username=self.username), timeout=1)
@@ -192,10 +184,7 @@ class Client:
         n.receiver = user
         n.message = message
 
-
-        # print(self.ip_ports)
         try:
-            print("[primary: " + self.primary + "]")
             response, status = self.stub.SendNote.with_call(n, timeout=5)
             if not response.success:
                 print(response.message)
@@ -203,8 +192,6 @@ class Client:
             return True
         except grpc.RpcError as e:
             print("[Send] Server failed")
-            # if no server is available, exit. Else, resend message
-            # self.switch_replica()
             self.send_message(user, message)
 
     
