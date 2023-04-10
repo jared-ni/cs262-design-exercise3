@@ -4,32 +4,32 @@ from unittest import TestCase
 import grpc
 import chat_pb2 as chat
 import chat_pb2_grpc as rpc
-import chat_gclient
+import client
 import time
 
 class ChatServerTest(unittest.TestCase):
     @classmethod
-    @mock.patch('chat_gclient.input', create=True)
+    @mock.patch('client.input', create=True)
     def setUpClass(cls, mock_input):
-        mock_input.side_effect = ["yes"]
+        mock_input.side_effect = ["1", "yes", "12345"]
         cls.channel = grpc.insecure_channel('localhost:43210')
         cls.conn = rpc.ChatServerStub(cls.channel)
-        cls.client = chat_gclient.Client()
+        cls.client = client.Client()
 
     # logout user
-    @mock.patch('chat_gclient.input', create=True)
+    @mock.patch('client.input', create=True)
     def test_logout(self, mocked_input):
         self.client.logout()
         self.assertEqual(self.client.username, "")
-    
+        
     # delete user1 for testing purposes
-    @mock.patch('chat_gclient.input', create=True)
+    @mock.patch('client.input', create=True)
     def test_delete_account(self, mocked_input):
         mocked_input.side_effect = ["password1"]
         self.client.delete_account("user1")
 
     # test sending message without logging in
-    @mock.patch('chat_gclient.input', create=True)
+    @mock.patch('client.input', create=True)
     def test_send_message(self, mocked_input):
         mocked_input.side_effect = ["user1", "Test message 1"]
 
@@ -38,7 +38,7 @@ class ChatServerTest(unittest.TestCase):
         self.assertEqual(success, False)
 
     # test register and login and send message
-    @mock.patch('chat_gclient.input', create=True)
+    @mock.patch('client.input', create=True)
     def test_register_user(self, mocked_input):
         mocked_input.side_effect = ["password1",
                                     "yes", "user1", "password1", "password1", 
@@ -77,7 +77,7 @@ class ChatServerTest(unittest.TestCase):
         self.assertEqual(success, False)
 
     # test send message
-    @mock.patch('chat_gclient.input', create=True)
+    @mock.patch('client.input', create=True)
     def test_send_message(self, mocked_input):
         mocked_input.side_effect = ["user1", "Test message 1",
                                     "p2", 
@@ -113,7 +113,7 @@ class ChatServerTest(unittest.TestCase):
 
     
     # test logout 
-    @mock.patch('chat_gclient.input', create=True)
+    @mock.patch('client.input', create=True)
     def test_logout(self, mocked_input):
         mocked_input.side_effect = ["yes", "user4", "password4", "password4", 
                                     "yes", "user4", "password4", 
@@ -132,9 +132,23 @@ class ChatServerTest(unittest.TestCase):
         self.assertEqual(self.client.username, "")
 
     # test list accounts
-    @mock.patch('chat_gclient.input', create=True)
+    @mock.patch('client.input', create=True)
     def test_list_accounts(self, mocked_input):
         result = self.client.list_accounts("")
+        self.assertEqual(result, None)
+
+
+    ####### REPLICATION UNIT TESTS #######
+    # test leader election
+    @mock.patch('client.input', create=True)
+    def test_leader_election(self, mocked_input):
+        result = self.client.leader_election()
+        self.assertEqual(result, None)
+
+    # test switch replica
+    @mock.patch('client.input', create=True)
+    def test_switch_replica(self, mocked_input):
+        result = self.client.switch_replica(True)
         self.assertEqual(result, None)
 
 
