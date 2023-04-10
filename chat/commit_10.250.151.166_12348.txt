@@ -1,1 +1,3 @@
-1~rfdwalfjsd lfk, fasdf., asdfjas.d fa.ds,f asdf 
+1~INSERT INTO users (username, password) VALUES ("j", "b'$2b$12$..cNUhX9aAWbbbmtZel6c.DAcayO4gPAMDG3QfaCTA/uunVF3CYc6'")
+2~INSERT INTO chat_history (sender, receiver, message) VALUES ('j', 'j', 'F ;ldsakjf asdl;fkjads ')
+3~INSERT INTO chat_history (sender, receiver, message) VALUES ('j', 'j', 'FJ dlsakjf ')

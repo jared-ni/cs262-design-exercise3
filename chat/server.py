@@ -134,33 +134,37 @@ class ChatServer(rpc.ChatServerServicer):
 
 
     def receive_file(self, stub, filename):
-        try:
-            print("Receiving file", filename)
-            request = chat.FileRequest(filename=filename)
-            response_iterator = stub.SendFile(request)
+        # try:
+        print("Receiving file", filename)
+        request = chat.FileRequest(filename=filename)
+        response_iterator = stub.SendFile(request)
 
-            print(response_iterator)
+        print(response_iterator)
 
-            # get last commit number
-            self.cursor.execute("SELECT count FROM commit_count WHERE counter_name = 'counter'")
-            counter = int(self.cursor.fetchone()[0])
+        # get last commit number
+        self.cursor.execute("SELECT count FROM commit_count WHERE counter_name = 'counter'")
+        counter = int(self.cursor.fetchone()[0])
 
-            for res in response_iterator:
-                commit_num, commit = res.message.split("~")
+        for res in response_iterator:
+            commit_num, commit = res.message.split("~")
+            commit = str(commit)
 
-                print("commit_num", commit_num)
-                print("commit", commit)
-                print()
+            print("commit_num:", commit_num)
+            print("commit:", commit)
 
-                # if int(commit_num) > counter:
-                #     self.cursor.execute(commit)
-                #     self.db.commit()
-                #     counter += 1
-                #     self.cursor.execute("UPDATE commit_count SET count = count + 1 WHERE counter_name = 'counter'")
-                #     self.db.commit()
-        except Exception as e:
-            # print detailed error message
-            print(e)
+            if int(commit_num) > counter:
+                with open(f"commit_{self.address}_{self.port}.txt", "a") as f:
+                    f.write(f"{commit_num}~{commit}")
+
+                self.cursor.execute(f'''{commit}''')
+                self.db.commit()
+                counter = int(commit_num)
+                self.cursor.execute("UPDATE commit_count SET count = count + 1 WHERE counter_name = 'counter'")
+                self.db.commit()
+
+        # except Exception as e:
+        #     # print detailed error message
+        #     print(e)
             
 
     
@@ -451,7 +455,8 @@ class ChatServer(rpc.ChatServerServicer):
 
         # log into the commit log
         with open(f"commit_{self.address}_{self.port}.txt", "a") as f:
-            f.write(f"{counter}~INSERT INTO users (username, password) VALUES ('{request.username}', '{self.hash_password(request.password)}')\n")
+            sqlite_command = f'INSERT INTO users (username, password) VALUES ("{request.username}", "{self.hash_password(request.password)}")\n'
+            f.write(f"{counter}~{sqlite_command}")
         
 
         # send to other replica
