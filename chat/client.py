@@ -190,9 +190,9 @@ class Client:
         n.sender = self.username
         n.receiver = user
         n.message = message
-        
 
-        print(self.ip_ports)
+
+        # print(self.ip_ports)
         try:
             print("[primary: " + self.primary + "]")
             response, status = self.stub.SendNote.with_call(n, timeout=5)
