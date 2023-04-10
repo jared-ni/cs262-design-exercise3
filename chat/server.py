@@ -139,7 +139,7 @@ class ChatServer(rpc.ChatServerServicer):
 
     # only if new update, primary update the client
     def Ping(self, request: chat.Empty(), context):
-        print("[Ping] Received ping")
+        # print("[Ping] Received ping")
 
         if len(self.system_updates) > 0:
             update = self.system_updates.popleft()
@@ -281,19 +281,11 @@ class ChatServer(rpc.ChatServerServicer):
     # Send a message to the server then to the receiver
     def SendNote(self, request: chat.Note, context):
         # try: 
-        print("[SendNote] Received message from", request.sender)
+        print("[SendNote] Received message: ", request.message)
+        request.message = self.primary
         # check version
         if request.version != 1:
             return chat.ServerResponse(success=False, message="[SERVER] Version mismatch")
-
-        
-
-        print("[SendNote] Current clients:")
-        print(self.clients)
-        print("[SendNote] Current users:")
-        print(self.users)
-        print("current context: " + str(context.peer()))
-
 
         # check if the user is logged in
         current_user = None
@@ -301,8 +293,8 @@ class ChatServer(rpc.ChatServerServicer):
             current_user = self.clients[context.peer()]
 
         # check if the username is in the current usernames
-        elif request.username in self.users:
-            print("!!!")
+        elif request.sender in self.users:
+
             current_user = request.sender
             # change client address
             with self.clients_lock:
@@ -314,13 +306,6 @@ class ChatServer(rpc.ChatServerServicer):
             # change user address
             with self.users_lock:
                 self.users[current_user]['address'] = context.peer()
-        
-        print("Second check")
-        print("[SendNote] Current clients:")
-        print(self.clients)
-        print("[SendNote] Current users:")
-        print(self.users)
-        print("current context: " + str(context.peer()))
             
 
         if current_user is None or not current_user:
@@ -340,6 +325,8 @@ class ChatServer(rpc.ChatServerServicer):
 
         # success message
         # send the same message to other replica
+        print("primary: " + self.primary)
+
         if self.primary == "self":
             for rep in self.replica_stubs:
                 if self.replica_stubs[rep] is not None:
@@ -431,13 +418,6 @@ class ChatServer(rpc.ChatServerServicer):
 
         client_addr = context.peer() if self.primary == "self" else request.client_addr
 
-        print("user: ") 
-        print(user)
-        print("currently logged in:")
-        print(self.users)
-        print("currently connected clients:")
-        print(self.clients)
-
         if request.username in self.users and self.users[request.username]["client"] is not None:
             detection = chat.Note(message = f"Logged out: detected {request.username} login on another client.")
             self.users[request.username]["unread"].append(detection)
@@ -453,9 +433,6 @@ class ChatServer(rpc.ChatServerServicer):
             with self.users_lock:
                 self.users[prev_user]["logged_in"] = False
                 self.users[prev_user]["client"] = None
-
-        # # login new user
-        print(self.users)
 
         with self.clients_lock:
             self.clients[client_addr] = request.username
@@ -484,12 +461,9 @@ class ChatServer(rpc.ChatServerServicer):
 
         # successfully logged in
         # login on replicas 
-        new_request = chat.AccountInfo(username=request.username, password=request.password, client_addr=client_addr)
-        print("client_addr: ")
-        print(client_addr)
-        print("request context: ")
-        print(context.peer())
-        print(new_request.client_addr)
+        new_request = chat.AccountInfo(username=request.username, 
+                                       password=request.password, 
+                                       client_addr=client_addr)
 
         if self.primary == "self":
             for rep in self.replica_stubs:
@@ -513,10 +487,30 @@ class ChatServer(rpc.ChatServerServicer):
 
     # Account Logout of the current client
     def Logout(self, request: chat.Empty, context):
+        
         # Check if the username exists
+        current_user = None
+        if context.peer() in self.clients:
+            current_user = self.clients[context.peer()]
 
-        if context.peer() not in self.clients or self.clients[context.peer()] is None:
+        # check if the username is in the current usernames
+        elif request.username in self.users:
+            print("!!!")
+            current_user = request.sender
+            # change client address
+            with self.clients_lock:
+                for client in self.clients:
+                    if self.clients[client] == current_user:
+                        del self.clients[client]
+                        break
+                self.clients[context.peer()] = current_user
+            # change user address
+            with self.users_lock:
+                self.users[current_user]['address'] = context.peer()
+            
+        if current_user is None or not current_user:
             return chat.ServerResponse(success=False, message="[SERVER] You are not logged in")
+
         
         # Logout the user: change both users and clients dicts
         username = self.clients[context.peer()]
@@ -583,6 +577,7 @@ class ChatServer(rpc.ChatServerServicer):
         # warn the currently logged in client on the deleted account
         print(self.users)
         
+        # no need to warn a person that's logged out on a new replica
         prev_client = self.users[request.username]["client"]
         if prev_client is not None:
             detection = chat.Note(message = f"Logged out: account {request.username} has been deleted.")
