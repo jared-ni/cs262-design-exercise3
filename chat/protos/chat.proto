@@ -58,6 +58,7 @@ message FileRequest {
 	bytes content = 2;
 }
 
+
 // The ChatServer service definition.
 service ChatServer {
     // bi-directional stream for chat streaming between server and client
@@ -85,6 +86,6 @@ service ChatServer {
 
 	rpc SendFile(FileRequest) returns (stream ServerResponse){}
 
-	rpc ChatHistory(Empty) returns (stream Note){}
+	rpc ChatHistory(AccountInfo) returns (stream Note){}
 }
 

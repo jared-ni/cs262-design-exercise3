@@ -87,7 +87,7 @@ class ChatServerStub(object):
                 )
         self.ChatHistory = channel.unary_stream(
                 '/chat.ChatServer/ChatHistory',
-                request_serializer=chat__pb2.Empty.SerializeToString,
+                request_serializer=chat__pb2.AccountInfo.SerializeToString,
                 response_deserializer=chat__pb2.Note.FromString,
                 )
 
@@ -268,7 +268,7 @@ def add_ChatServerServicer_to_server(servicer, server):
             ),
             'ChatHistory': grpc.unary_stream_rpc_method_handler(
                     servicer.ChatHistory,
-                    request_deserializer=chat__pb2.Empty.FromString,
+                    request_deserializer=chat__pb2.AccountInfo.FromString,
                     response_serializer=chat__pb2.Note.SerializeToString,
             ),
     }
@@ -532,7 +532,7 @@ class ChatServer(object):
             timeout=None,
             metadata=None):
         return grpc.experimental.unary_stream(request, target, '/chat.ChatServer/ChatHistory',
-            chat__pb2.Empty.SerializeToString,
+            chat__pb2.AccountInfo.SerializeToString,
             chat__pb2.Note.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

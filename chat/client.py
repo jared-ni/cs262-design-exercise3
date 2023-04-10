@@ -319,6 +319,7 @@ class Client:
     # prints out the help menu
     def print_help(self):
         print("Commands:")
+        print("\t./list: list all chat history of the current user, in the form <sender> -> <receiver> : <message>,")
         print("\t./list <user>: list all users if <user> is empty, else list all users that contain <user>,")
         print("\t./register: register a new account,")
         print("\t./login: log in to an existing account,")
@@ -329,7 +330,7 @@ class Client:
 
     # prints directional commands
     def print_commands(self):
-        print("Commands: <user>: <message>, ./list, ./register, ./login, ./delete, ./logout. Type ./help for more info.")
+        print("Commands: <user>: <message>, ./history, ./list, ./register, ./login, ./delete, ./logout. Type ./help for more info.")
 
 
     # disconnect from server
@@ -344,7 +345,13 @@ class Client:
         h = blake2b(key=CLIENT_KEY, digest_size=16)
         h.update(password.encode(FORMAT))
         return h.hexdigest()
-
+    
+    def get_history(self):
+        n = chat.AccountInfo()
+        n.username = self.username
+        for response in self.stub.ChatHistory(n):
+            print(response.sender + "-> " + response.receiver + ": " + response.message)
+        print()
 
     # communicate with server loop
     def communicate_with_server(self):
@@ -383,6 +390,8 @@ class Client:
                     self.login_user()
                 elif message.lower() == "./logout":
                     self.logout()
+                elif message.lower() == "./history":
+                    self.get_history()
                 else:
                     firstColon = message.find(':')
                     if firstColon == -1:

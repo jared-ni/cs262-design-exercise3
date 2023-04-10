@@ -126,6 +126,22 @@ class ChatServer(rpc.ChatServerServicer):
         self.sync_commits()
 
 
+    def ChatHistory(self, request, context):
+        if not request.username:
+            return chat.ServerResponse(success=False, error="[SERVER] You're not logged in")
+        
+        if request.username not in self.users:
+            return chat.ServerResponse(success=False, error="[SERVER] User does not exist")
+        
+        # get chat history
+        self.cursor.execute("SELECT * FROM chat_history WHERE sender = ? OR receiver = ?", (request.username, request.username))
+        chat_history = self.cursor.fetchall()
+        for c in chat_history:
+            yield chat.Note(sender=c[0], receiver=c[1], message=c[2])
+
+
+
+    
     def sync_commits(self):
         for rep in self.ip_ports:
             if self.ip_ports[rep] is not None and rep != "self":
