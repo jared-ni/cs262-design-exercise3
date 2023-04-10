@@ -1,3 +1,0 @@
-1~INSERT INTO users (username, password) VALUES ("k", "141c6adb2eff419d49a2d86b4cf4f0fe")
-2~INSERT INTO users (username, password) VALUES ("l", "b'$2b$12$i9AC9EvpIiI/4.c8E2eEB.2GjQrdqrBKnEJxv7xckRVNVXr2/Z/jK'")
-3~INSERT INTO users (username, password) VALUES ('o', 'b'$2b$12$fh.2PMx8RPhmSGpNjnCa..h7j552JePOwOnWCjXKnl5g4sxukeGT2'')

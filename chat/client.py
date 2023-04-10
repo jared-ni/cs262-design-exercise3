@@ -36,7 +36,7 @@ class Client:
         self.channel = None
         self.stub = None
 
-        # configure server address, if on Jared's Mac, try 10.250.151.166
+        # configure server address, if on Jared's Mac, try 
         try:
             while True:
                 self.rep_count = int(input("How many replicas are you connecting to? (1/2/3) "))

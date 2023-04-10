@@ -1,0 +1,7 @@
+1~INSERT INTO users (username, password) VALUES ('jared', "141c6adb2eff419d49a2d86b4cf4f0fe")
+2~INSERT INTO users (username, password) VALUES ('justin', "141c6adb2eff419d49a2d86b4cf4f0fe")
+3~INSERT INTO chat_history (sender, receiver, message) VALUES ('jared', 'justin', ' flkasjdflks')
+4~INSERT INTO chat_history (sender, receiver, message) VALUES ('jared', 'justin', ' fdsjlkafjds')
+5~INSERT INTO chat_history (sender, receiver, message) VALUES ('justin', 'jared', ' yo')
+6~INSERT INTO chat_history (sender, receiver, message) VALUES ('jared', 'justin', ' fsdlakjflksad')
+7~INSERT INTO chat_history (sender, receiver, message) VALUES ('jared', 'justin', ' hi how are you')
