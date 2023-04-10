@@ -50,8 +50,6 @@ class ChatServer(rpc.ChatServerServicer):
         }
         self.primary = "self"
 
-        self.synced = False
-
         # TODO: add server replicas
         prior_replicas = 0
         while True:
@@ -78,61 +76,59 @@ class ChatServer(rpc.ChatServerServicer):
                 else:
                     continue
         
-        # try: 
+        try: 
 
-        print("Server address:", self.address)
-        print("Server port:", self.port)
-        print(self.ip_ports)
+            print("Server address:", self.address)
+            print("Server port:", self.port)
+            print(self.ip_ports)
 
-        # TODO: add database
+            # TODO: add database
 
-        # add commit log 
-        with open(f"commit_{self.address}_{self.port}.txt", "a") as f:
-            f.write("")
-        
-        self.db = sqlite3.connect(f"chat_{self.port}.db", check_same_thread=False)
-        self.cursor = self.db.cursor()
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS users(username text, password text)''')
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS chat_history (sender text, receiver text, message text)''')
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS unread (sender text, receiver text, message text)''')
-        # make counter_name unique
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS commit_count (count integer, counter_name text UNIQUE)''')
-        # add a row named "counter" to commit_count table if it doesn't exist
-        self.cursor.execute('''INSERT OR IGNORE INTO commit_count (count, counter_name) VALUES (0, "counter")''')
-        self.db.commit()
+            # add commit log 
+            with open(f"commit_{self.address}_{self.port}.txt", "a") as f:
+                f.write("")
+            
+            self.db = sqlite3.connect(f"chat_{self.port}.db", check_same_thread=False)
+            self.cursor = self.db.cursor()
+            self.cursor.execute('''CREATE TABLE IF NOT EXISTS users(username text, password text)''')
+            self.cursor.execute('''CREATE TABLE IF NOT EXISTS chat_history (sender text, receiver text, message text)''')
+            self.cursor.execute('''CREATE TABLE IF NOT EXISTS unread (sender text, receiver text, message text)''')
+            # make counter_name unique
+            self.cursor.execute('''CREATE TABLE IF NOT EXISTS commit_count (count integer, counter_name text UNIQUE)''')
+            # add a row named "counter" to commit_count table if it doesn't exist
+            self.cursor.execute('''INSERT OR IGNORE INTO commit_count (count, counter_name) VALUES (0, "counter")''')
+            self.db.commit()
 
 
-        for i in range(1, prior_replicas + 1):
-            handle_connect(i)
-            # connect to replica
-            addr = str(self.ip_ports[f"R{i}"][0]) + ":" + str(self.ip_ports[f"R{i}"][1])
-            channel = grpc.insecure_channel(addr)
-            self.replica_stubs[f"R{i}"] = rpc.ChatServerStub(channel)
-            print("Connected to prior replica", i)
+            for i in range(1, prior_replicas + 1):
+                handle_connect(i)
+                # connect to replica
+                addr = str(self.ip_ports[f"R{i}"][0]) + ":" + str(self.ip_ports[f"R{i}"][1])
+                channel = grpc.insecure_channel(addr)
+                self.replica_stubs[f"R{i}"] = rpc.ChatServerStub(channel)
+                print("Connected to prior replica", i)
 
-        # send current ip and port to prior replicas
-        print("checkpoint: got to replica_message")
-        self.replica_message()
-        # except:
-        #     print("Could not connect to server. Check ip and port addresses.")
-        #     exit(0)
+            # send current ip and port to prior replicas
+            print("checkpoint: got to replica_message")
+            self.replica_message()
+        except:
+            print("Could not connect to server. Check ip and port addresses.")
+            exit(0)
 
         # start thread to detect failures
         threading.Thread(target=self.detect_failure, daemon=True).start()
 
+
         # sync commit logs with replicas
-        # self.sync_commits()
-
-                
-
-    def sync_commits(self):
         for rep in self.ip_ports:
             if self.ip_ports[rep] is not None and rep != "self":
                 addr, port = self.ip_ports[rep]
                 stub = self.replica_stubs[rep]
+
                 self.receive_file(stub, f"commit_{addr}_{port}.txt")
 
-
+                
+        
     def receive_file(self, stub, filename):
         # try:
         print("Receiving file", filename)
@@ -161,12 +157,6 @@ class ChatServer(rpc.ChatServerServicer):
                 counter = int(commit_num)
                 self.cursor.execute("UPDATE commit_count SET count = count + 1 WHERE counter_name = 'counter'")
                 self.db.commit()
-
-        # except Exception as e:
-        #     # print detailed error message
-        #     print(e)
-            
-
     
 
     def SendFile(self, request, context):
@@ -174,48 +164,6 @@ class ChatServer(rpc.ChatServerServicer):
             for line in f:
                 response = chat.ServerResponse(success=True, message=line)
                 yield response
-
-
-    def replica_message(self):
-        print("[Replica message] Sending replica message")
-        n = chat.ReplicaMessage(ip=self.address, port=self.port)
-        for rep in self.replica_stubs:
-            if self.replica_stubs[rep] is not None:
-                response = self.replica_stubs[rep].SendReplica(n)
-                print("[Replica message] Sent replica message to", rep)
-        self.leader_election()
-
-
-    # TODO: add message function bewteen replicas
-    def SendReplica(self, request: chat.ReplicaMessage(), context):
-        # fill in a None replica
-        for rep in self.ip_ports:
-            if self.ip_ports[rep] is None:
-                self.ip_ports[rep] = (request.ip, request.port)
-                # connect to replica
-                addr = str(self.ip_ports[rep][0]) + ":" + str(self.ip_ports[rep][1])
-                grpc.insecure_channel(addr).close()
-                channel = grpc.insecure_channel(addr)
-                self.replica_stubs[rep] = rpc.ChatServerStub(channel)
-
-                print("[SendReplica] Connected to replica")
-
-                print(self.ip_ports)
-
-                # TODO: sync commit log with received ip and port
-                self.synced = False
-
-                if self.primary == "self":
-                    self.inform_client_new_replica(self.ip_ports[rep], is_new=True)
-                break
-        
-        # print("[SendReplica] Syncing commit logs")
-        # self.receive_file(stub, f"commit_{addr}_{port}.txt")
-        
-        # print("[SendReplica] leader election")
-        # self.leader_election()
-
-        return chat.ServerResponse(success=True, message="Replica added")
         
 
     # periodically check if replicas are still alive
@@ -247,6 +195,7 @@ class ChatServer(rpc.ChatServerServicer):
 
     # only if new update, primary update the client
     def Ping(self, request: chat.AccountInfo(), context):
+        # print("[Ping] Received ping")
         print("ping: " + request.username)
         if request.username in self.users and context.peer() not in self.clients:
             current_user = request.username
@@ -269,14 +218,8 @@ class ChatServer(rpc.ChatServerServicer):
         return chat.PingMessage(change=False, new_server=False)
     
 
-
     def PingServer(self, request: chat.ServerResponse(), context):
-        print(f"[Server Ping] Received ping from {request.message}")
-        
-        # if not synced, sync
-        # if not self.synced:
-        #     self.sync_commits()
-        #     self.synced = True
+        # print(f"[Server Ping] Received ping from {request.message}")
 
         return chat.ServerResponse(success=True, message="Pong")
 
@@ -293,11 +236,52 @@ class ChatServer(rpc.ChatServerServicer):
                     leader_uuid = uuid
                     self.primary = r
         print("[Leader election] New primary replica: " + self.primary)
+        
+
+    def replica_message(self):
+        print("[Replica message] Sending replica message")
+        n = chat.ReplicaMessage(ip=self.address, port=self.port)
+        for rep in self.replica_stubs:
+            if self.replica_stubs[rep] is not None:
+                response = self.replica_stubs[rep].SendReplica(n)
+                print("[Replica message] Sent replica message to", rep)
+        self.leader_election()
+
+
+    # TODO: add message function bewteen replicas
+    def SendReplica(self, request: chat.ReplicaMessage, context):
+        # fill in a None replica
+        for rep in self.ip_ports:
+            if self.ip_ports[rep] is None:
+                self.ip_ports[rep] = (request.ip, request.port)
+                # connect to replica
+                addr = str(self.ip_ports[rep][0]) + ":" + str(self.ip_ports[rep][1])
+                channel = grpc.insecure_channel(addr)
+                self.replica_stubs[rep] = rpc.ChatServerStub(channel)
+                print("[SendReplica] Connected to replica")
+                print(self.ip_ports)
+
+                if self.primary == "self":
+                    self.inform_client_new_replica(self.ip_ports[rep], is_new=True)
+
+                break
+        
+        print("[SendReplica] leader election")
+        self.leader_election()
+
+        return chat.ServerResponse(success=True, message="Replica added")
+
+
+    # hash password again for storage
+    def hash_password(self, password):
+        # return bcrypt.hashpw(password.encode(FORMAT), bcrypt.gensalt())
+        return password
 
 
     # return true if password matches hashed password
     def check_password(self, password, hashed_password):
         # print(hashed_password)
+        # return bcrypt.checkpw(password.encode(FORMAT), hashed_password)
         return password == hashed_password
 
 
@@ -430,7 +414,7 @@ class ChatServer(rpc.ChatServerServicer):
         # Create the account
         with self.users_lock:
             self.users[request.username] = {
-                "password": request.password, 
+                "password": self.hash_password(request.password), 
                 "client": None,
                 "logged_in": False,
                 "unread": deque()
@@ -438,7 +422,7 @@ class ChatServer(rpc.ChatServerServicer):
 
         # insert into database
         self.cursor.execute('''INSERT INTO users (username, password) VALUES (?, ?)''', 
-                            (request.username, request.password))
+                            (request.username, self.hash_password(request.password)))
 
         # increment counter in database
         self.cursor.execute("UPDATE commit_count SET count = count + 1 WHERE counter_name = 'counter'")
@@ -450,8 +434,7 @@ class ChatServer(rpc.ChatServerServicer):
 
         # log into the commit log
         with open(f"commit_{self.address}_{self.port}.txt", "a") as f:
-            sqlite_command = f'INSERT INTO users (username, password) VALUES ("{request.username}", "{request.password}")\n'
-            f.write(f"{counter}~{sqlite_command}")
+            f.write(f"{counter}~INSERT INTO users (username, password) VALUES ('{request.username}', '{self.hash_password(request.password)}')\n")
         
 
         # send to other replica
@@ -480,8 +463,6 @@ class ChatServer(rpc.ChatServerServicer):
             return chat.ServerResponse(success=False, message="[SERVER] Username does not exist")
 
         # Check if the password is correct in database
-        print("!!!!!")
-        print(user[1])
         if not self.check_password(request.password, user[1]):
             return chat.ServerResponse(success=False, message="[SERVER] Incorrect password")
         
