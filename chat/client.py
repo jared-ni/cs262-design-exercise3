@@ -50,8 +50,6 @@ class Client:
             print("\n[DISCONNECTED]")
             exit(0)
 
-        print(self.ip_ports)
-
         try:
             # connect to primary replica
             self.leader_election()
@@ -182,7 +180,6 @@ class Client:
 
             except grpc.RpcError as e:
                 print("[Ping] Primary replica failed. Trying another replica...")
-                print("[Ping] Error:" + str(e))
                 self.switch_replica()
 
 
