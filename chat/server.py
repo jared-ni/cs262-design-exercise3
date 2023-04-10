@@ -106,12 +106,10 @@ class ChatServer(rpc.ChatServerServicer):
         self.cursor.execute('''CREATE TABLE IF NOT EXISTS users(username text, password text)''')
         self.cursor.execute('''CREATE TABLE IF NOT EXISTS chat_history (sender text, receiver text, message text)''')
         self.cursor.execute('''CREATE TABLE IF NOT EXISTS unread (sender text, receiver text, message text)''')
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS commit_count (count integer, counter_name text)''')
-
+        # make counter_name unique
+        self.cursor.execute('''CREATE TABLE IF NOT EXISTS commit_count (count integer, counter_name text UNIQUE)''')
         # add a row named "counter" to commit_count table if it doesn't exist
-        self.cursor.execute('''SELECT * FROM commit_count WHERE counter_name = "counter"''')
-        if self.cursor.fetchone() is None:
-            self.cursor.execute('''INSERT INTO commit_count VALUES (?, ?)''', (0, "counter"))
+        self.cursor.execute('''INSERT OR IGNORE INTO commit_count (count, counter_name) VALUES (0, "counter")''')
 
         self.db.commit()
 
@@ -318,14 +316,18 @@ class ChatServer(rpc.ChatServerServicer):
         # commit to database
         self.cursor.execute("INSERT INTO chat_history (sender, receiver, message) VALUES (?, ?, ?)", 
                             (request.sender, request.receiver, request.message))
-
         # increment counter in database
-        self.cursor.execute("UPDATE commit_counter SET counter = counter + 1 WHERE counter_name = counter")
-
-        # increment counter and add to
+        self.cursor.execute("UPDATE commit_count SET count = count + 1 WHERE counter_name = 'counter'")
         self.db.commit()
 
+        # get counter
+        self.cursor.execute("SELECT count FROM commit_count WHERE counter_name = 'counter'")
+        counter = self.cursor.fetchone()[0]
 
+        # log into the commit log
+        with open(f"commit_{self.address}_{self.port}.txt", "a") as f:
+            f.write(f"{counter}~INSERT INTO chat_history (sender, receiver, message) VALUES ('{request.sender}', '{request.receiver}', '{request.message}')\n")
+        
 
         # append to unread
         if self.primary == "self":
@@ -364,23 +366,29 @@ class ChatServer(rpc.ChatServerServicer):
                 "unread": deque()
             }
 
-        # success message
-        # commit log
-        # if self.primary == "self":
-        #     with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
-        #         commit_file.write(f"create~{request.username}~{request.password}\n")
-
         # insert into database
         self.cursor.execute('''INSERT INTO users (username, password) VALUES (?, ?)''', 
                             (request.username, self.hash_password(request.password)))
+
+        # increment counter in database
+        self.cursor.execute("UPDATE commit_count SET count = count + 1 WHERE counter_name = 'counter'")
+        self.db.commit()
+
+        # get counter
+        self.cursor.execute("SELECT count FROM commit_count WHERE counter_name = 'counter'")
+        counter = self.cursor.fetchone()[0]
+
+        # log into the commit log
+        with open(f"commit_{self.address}_{self.port}.txt", "a") as f:
+            f.write(f"{counter}~INSERT INTO users (username, password) VALUES ('{request.username}', '{self.hash_password(request.password)}')\n")
         
+
         # send to other replica
         if self.primary == "self":
             for rep in self.replica_stubs:
                 if self.replica_stubs[rep] is not None:
                     self.replica_stubs[rep].CreateAccount(request)
 
-        self.db.commit()
 
         return chat.ServerResponse(success=True, message=f"[SERVER] Account {request.username} created")
         
@@ -550,10 +558,6 @@ class ChatServer(rpc.ChatServerServicer):
             yield chat.ServerResponse(success=False, message=f"[SERVER] Incorrect password for account {request.username}")
             return
         
-        # actual account deletion detection
-        # if self.primary == "self":
-        #     with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
-        #         commit_file.write(f"logout~{context.peer()}~{request.username}~{request.password}\n")
 
         # delete on replicas
         if self.primary == "self":
@@ -577,9 +581,22 @@ class ChatServer(rpc.ChatServerServicer):
         with self.users_lock:
             del self.users[request.username]
         
+
         # delete from database
         self.cursor.execute("DELETE FROM users WHERE username = ?", (request.username,))
+
+        # increment counter in database
+        self.cursor.execute("UPDATE commit_count SET count = count + 1 WHERE counter_name = 'counter'")
         self.db.commit()
+
+        # get counter
+        self.cursor.execute("SELECT count FROM commit_count WHERE counter_name = 'counter'")
+        counter = self.cursor.fetchone()[0]
+
+        # log into the commit log
+        with open(f"commit_{self.address}_{self.port}.txt", "a") as f:
+            f.write(f"{counter}~DELETE FROM users WHERE username = '{request.username}'\n")
+        
         
         yield chat.ServerResponse(success=True, message=f"[SERVER] Account {request.username} deleted")
         return

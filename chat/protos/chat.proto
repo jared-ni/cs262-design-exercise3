@@ -78,5 +78,7 @@ service ChatServer {
 
 	rpc GetData (DataRequest) returns (DataResponse){}
 
+
+
 }
 

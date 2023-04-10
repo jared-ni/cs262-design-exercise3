@@ -1,7 +1,0 @@
-send~ipv4:10.250.151.166:61100~1~a~s~ lkfjdslfk
-send~ipv4:10.250.151.166:61101~1~s~a~ fldskjaf al;dksfj salk;dfj dsalkfj 
-send~ipv4:10.250.151.166:61101~1~s~s~ flkjsdf
-send~ipv4:10.250.151.166:61101~1~a~a~ fl;kdsajfkl;asdjf
-send~ipv4:10.250.151.166:61274~1~a~a~ lfksjf
-send~ipv4:10.250.151.166:61310~1~a~s~ fldksjfkldsj
-send~ipv4:10.250.151.166:61315~1~s~a~ Flksdjfkldsj
