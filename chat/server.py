@@ -50,6 +50,9 @@ class ChatServer(rpc.ChatServerServicer):
         }
         self.primary = "self"
 
+        self.sync_lock = threading.Lock()
+        self.synced = False
+
         # TODO: add server replicas
         prior_replicas = 0
         while True:
@@ -120,14 +123,16 @@ class ChatServer(rpc.ChatServerServicer):
 
 
         # sync commit logs with replicas
+        self.sync_commits()
+
+
+    def sync_commits(self):
         for rep in self.ip_ports:
             if self.ip_ports[rep] is not None and rep != "self":
                 addr, port = self.ip_ports[rep]
                 stub = self.replica_stubs[rep]
-
                 self.receive_file(stub, f"commit_{addr}_{port}.txt")
-
-                
+     
         
     def receive_file(self, stub, filename):
         # try:
@@ -221,6 +226,12 @@ class ChatServer(rpc.ChatServerServicer):
     def PingServer(self, request: chat.ServerResponse(), context):
         # print(f"[Server Ping] Received ping from {request.message}")
 
+        # if not synced, sync
+        if not self.synced:
+            self.sync_commits()
+            with self.sync_lock:
+                self.synced = True
+
         return chat.ServerResponse(success=True, message="Pong")
 
 
@@ -268,6 +279,9 @@ class ChatServer(rpc.ChatServerServicer):
         
         print("[SendReplica] leader election")
         self.leader_election()
+
+        with self.sync_lock:
+            self.synced = False
 
         return chat.ServerResponse(success=True, message="Replica added")
 
