@@ -106,6 +106,12 @@ class ChatServer(rpc.ChatServerServicer):
         self.cursor.execute('''CREATE TABLE IF NOT EXISTS users(username text, password text)''')
         self.cursor.execute('''CREATE TABLE IF NOT EXISTS chat_history (sender text, receiver text, message text)''')
         self.cursor.execute('''CREATE TABLE IF NOT EXISTS unread (sender text, receiver text, message text)''')
+        self.cursor.execute('''CREATE TABLE IF NOT EXISTS commit_count (count integer, table_name text)''')
+
+        # add commit count to database if not already 
+        self.cursor.execute('''SELECT * FROM commit_count WHERE table_name = ?''', ("counter",))
+        if self.cursor.fetchone() is None:
+            self.cursor.execute('''INSERT INTO commit_count VALUES (?, ?)''', (0, "counter"))
 
         self.db.commit()
 
@@ -138,8 +144,22 @@ class ChatServer(rpc.ChatServerServicer):
 
 
     # only if new update, primary update the client
-    def Ping(self, request: chat.Empty(), context):
+    def Ping(self, request: chat.AccountInfo(), context):
         # print("[Ping] Received ping")
+        print("ping: " + request.username)
+        if request.username in self.users and context.peer() not in self.clients:
+            current_user = request.username
+            # change client address
+            with self.clients_lock:
+                for client in self.clients:
+                    if self.clients[client] == current_user:
+                        del self.clients[client]
+                        break
+                self.clients[context.peer()] = current_user
+            # change user address
+            with self.users_lock:
+                self.users[current_user]['address'] = context.peer()
+
 
         if len(self.system_updates) > 0:
             update = self.system_updates.popleft()
@@ -222,36 +242,6 @@ class ChatServer(rpc.ChatServerServicer):
         print("[Inform client] Informing clients of new replica")
 
 
-    # # TODO: 
-    # # The stream which will be used to send new messages to clients
-    # def ChatStream(self, _request_iterator, context):
-    #     # For every client a infinite loop starts (in gRPC's own managed thread)
-    #     user = None
-    #     while True:
-    #         try: 
-    #             if context.peer() in self.clients:
-    #                 user = self.clients[context.peer()]
-    #             if not user:
-    #                 continue
-    #             # Check if there are any new messages if logged in
-    #             while len(self.users[user]['unread']) > 0:
-    #                 message = self.users[user]['unread'].popleft()
-    
-    #                 # store message into database
-    #                 # self.cursor.execute("INSERT INTO chat_history (sender, receiver, message) VALUES (%s, %s, %s)", (message.sender, message.receiver, message.message))
-
-    #                 yield message
-
-
-    #         except IOError as e:
-    #             # ignore recoverable EAGAIN and EWOULDBLOCK error
-    #             if e.errno == errno.EAGAIN and e.errno == errno.EWOULDBLOCK:
-    #                 continue
-    #         except Exception as e:
-    #             print(e)
-    #             yield chat.ServerResponse(success=False, message="[SERVER] Error sending message")
-    
-
     def ChatSingle(self, request, context):
         user = None
         if context.peer() in self.clients:
@@ -282,7 +272,6 @@ class ChatServer(rpc.ChatServerServicer):
     def SendNote(self, request: chat.Note, context):
         # try: 
         print("[SendNote] Received message: ", request.message)
-        request.message = self.primary
         # check version
         if request.version != 1:
             return chat.ServerResponse(success=False, message="[SERVER] Version mismatch")
@@ -312,16 +301,15 @@ class ChatServer(rpc.ChatServerServicer):
             return chat.ServerResponse(success=False, message="[SERVER] You are not logged in")
 
         # Check if the receiver exists in the database
-
         self.cursor.execute("SELECT * FROM users WHERE username = ?", (request.receiver,))
         receiver = self.cursor.fetchone()
         if receiver is None:
             return chat.ServerResponse(success=False, message="[SERVER] User does not exist")
         
-        # # commit log
-        # if self.primary == "self":
-        #     with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
-        #         commit_file.write(f"send~{context.peer()}~{request.version}~{request.sender}~{request.receiver}~{request.message}\n")
+        # commit log
+        if self.primary == "self":
+            with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
+                commit_file.write(f"send~{context.peer()}~{request.version}~{request.sender}~{request.receiver}~{request.message}\n")
 
         # success message
         # send the same message to other replica

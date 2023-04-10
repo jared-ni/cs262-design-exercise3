@@ -72,7 +72,7 @@ service ChatServer {
 	// delete account
 	rpc DeleteAccount (AccountInfo) returns (stream ServerResponse);
 	// ping 
-	rpc Ping (Empty) returns (PingMessage);
+	rpc Ping (AccountInfo) returns (PingMessage);
 	rpc PingServer (ServerResponse) returns (ServerResponse);
 	rpc ChatSingle (Empty) returns (Note);
 

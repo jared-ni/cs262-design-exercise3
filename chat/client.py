@@ -163,7 +163,7 @@ class Client:
             # print("[Ping] Pinging primary replica...")
             time.sleep(1)
             try:
-                response, status = self.stub.Ping.with_call(chat.Empty(), timeout=1)
+                response, status = self.stub.Ping.with_call(chat.AccountInfo(username=self.username), timeout=1)
 
                 # check if there's replica update: if so, update ip_ports
                 if response.change and not response.new_server:
