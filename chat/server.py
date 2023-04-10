@@ -121,7 +121,7 @@ class ChatServer(rpc.ChatServerServicer):
         threading.Thread(target=self.detect_failure, daemon=True).start()
 
         # sync commit logs with replicas
-        self.sync_commits()
+        # self.sync_commits()
 
                 
 
@@ -274,9 +274,9 @@ class ChatServer(rpc.ChatServerServicer):
         print(f"[Server Ping] Received ping from {request.message}")
         
         # if not synced, sync
-        if not self.synced:
-            self.sync_commits()
-            self.synced = True
+        # if not self.synced:
+        #     self.sync_commits()
+        #     self.synced = True
 
         return chat.ServerResponse(success=True, message="Pong")
 
@@ -295,15 +295,10 @@ class ChatServer(rpc.ChatServerServicer):
         print("[Leader election] New primary replica: " + self.primary)
 
 
-    # hash password again for storage
-    def hash_password(self, password):
-        return bcrypt.hashpw(password.encode(FORMAT), bcrypt.gensalt())
-
-
     # return true if password matches hashed password
     def check_password(self, password, hashed_password):
         # print(hashed_password)
-        return bcrypt.checkpw(password.encode(FORMAT), hashed_password)
+        return password == hashed_password
 
 
     def inform_client_new_replica(self, replica, is_new=True):
@@ -435,7 +430,7 @@ class ChatServer(rpc.ChatServerServicer):
         # Create the account
         with self.users_lock:
             self.users[request.username] = {
-                "password": self.hash_password(request.password), 
+                "password": request.password, 
                 "client": None,
                 "logged_in": False,
                 "unread": deque()
@@ -443,7 +438,7 @@ class ChatServer(rpc.ChatServerServicer):
 
         # insert into database
         self.cursor.execute('''INSERT INTO users (username, password) VALUES (?, ?)''', 
-                            (request.username, self.hash_password(request.password)))
+                            (request.username, request.password))
 
         # increment counter in database
         self.cursor.execute("UPDATE commit_count SET count = count + 1 WHERE counter_name = 'counter'")
@@ -455,7 +450,7 @@ class ChatServer(rpc.ChatServerServicer):
 
         # log into the commit log
         with open(f"commit_{self.address}_{self.port}.txt", "a") as f:
-            sqlite_command = f'INSERT INTO users (username, password) VALUES ("{request.username}", "{self.hash_password(request.password)}")\n'
+            sqlite_command = f'INSERT INTO users (username, password) VALUES ("{request.username}", "{request.password}")\n'
             f.write(f"{counter}~{sqlite_command}")
         
 
@@ -485,6 +480,8 @@ class ChatServer(rpc.ChatServerServicer):
             return chat.ServerResponse(success=False, message="[SERVER] Username does not exist")
 
         # Check if the password is correct in database
+        print("!!!!!")
+        print(user[1])
         if not self.check_password(request.password, user[1]):
             return chat.ServerResponse(success=False, message="[SERVER] Incorrect password")
         

@@ -1,3 +1,1 @@
-1~INSERT INTO users (username, password) VALUES ("j", "b'$2b$12$KVwBWHMvnDYfmPw0fltUVe.yPmA4ISaSIlZBThySiZtZYQduAoyZi'")
-2~INSERT INTO chat_history (sender, receiver, message) VALUES ('j', 'j', 'F ;ldsakjf asdl;fkjads ')
-3~INSERT INTO chat_history (sender, receiver, message) VALUES ('j', 'j', 'FJ dlsakjf ')
+1~INSERT INTO users (username, password) VALUES ("k", "141c6adb2eff419d49a2d86b4cf4f0fe")
