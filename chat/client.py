@@ -72,6 +72,7 @@ class Client:
             if local.lower() == 'no':
                 response = input(f"Server replica {rn} <IP address> <port>: ")
                 self.ip_ports[f"R{rn}"] = response.split()
+                print(self.ip_ports[f"R{rn}"])
                 break
             elif local.lower() == 'yes':
                 response = input(f"Server replica {rn} <port>: ")
