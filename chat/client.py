@@ -126,6 +126,9 @@ class Client:
                 note, status = self.stub.ChatSingle.with_call(chat.Empty(), timeout=5)
                 if note.operation_code==10:
                     continue
+                elif note.message[:10] == "Logged out":
+                    self.stub.Logout(chat.Empty())
+                    self.username = ""
                 print(">[{}] {}".format(note.sender, note.message))
             except:
                 continue

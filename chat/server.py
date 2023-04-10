@@ -106,10 +106,10 @@ class ChatServer(rpc.ChatServerServicer):
         self.cursor.execute('''CREATE TABLE IF NOT EXISTS users(username text, password text)''')
         self.cursor.execute('''CREATE TABLE IF NOT EXISTS chat_history (sender text, receiver text, message text)''')
         self.cursor.execute('''CREATE TABLE IF NOT EXISTS unread (sender text, receiver text, message text)''')
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS commit_count (count integer, table_name text)''')
+        self.cursor.execute('''CREATE TABLE IF NOT EXISTS commit_count (count integer, counter_name text)''')
 
-        # add commit count to database if not already 
-        self.cursor.execute('''SELECT * FROM commit_count WHERE table_name = ?''', ("counter",))
+        # add a row named "counter" to commit_count table if it doesn't exist
+        self.cursor.execute('''SELECT * FROM commit_count WHERE counter_name = "counter"''')
         if self.cursor.fetchone() is None:
             self.cursor.execute('''INSERT INTO commit_count VALUES (?, ?)''', (0, "counter"))
 
@@ -306,12 +306,7 @@ class ChatServer(rpc.ChatServerServicer):
         if receiver is None:
             return chat.ServerResponse(success=False, message="[SERVER] User does not exist")
         
-        # commit log
-        if self.primary == "self":
-            with open (f"commits_{self.address}_{self.port}.txt", "a") as commit_file:
-                commit_file.write(f"send~{context.peer()}~{request.version}~{request.sender}~{request.receiver}~{request.message}\n")
 
-        # success message
         # send the same message to other replica
         print("primary: " + self.primary)
 
@@ -323,7 +318,14 @@ class ChatServer(rpc.ChatServerServicer):
         # commit to database
         self.cursor.execute("INSERT INTO chat_history (sender, receiver, message) VALUES (?, ?, ?)", 
                             (request.sender, request.receiver, request.message))
+
+        # increment counter in database
+        self.cursor.execute("UPDATE commit_counter SET counter = counter + 1 WHERE counter_name = counter")
+
+        # increment counter and add to
         self.db.commit()
+
+
 
         # append to unread
         if self.primary == "self":
@@ -388,7 +390,7 @@ class ChatServer(rpc.ChatServerServicer):
     
 
     # Account Login: a client must be logged in on one device at a time, else they are logged out of previous device
-    def Login(self, request: chat.AccountInfo, context):
+    def Login(self, request: chat.AccountInfo(), context):
         # try: 
         # Check if the username exists
         # check if username exists in database
@@ -483,7 +485,6 @@ class ChatServer(rpc.ChatServerServicer):
 
         # check if the username is in the current usernames
         elif request.username in self.users:
-            print("!!!")
             current_user = request.sender
             # change client address
             with self.clients_lock:
