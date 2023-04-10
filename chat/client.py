@@ -36,13 +36,16 @@ class Client:
         self.channel = None
         self.stub = None
 
-
-
         # configure server address, if on Jared's Mac, try 10.250.151.166
         try:
-            self.handle_connect("1")
-            # self.handle_connect("2")
-            # self.handle_connect("3")
+            while True:
+                self.rep_count = int(input("How many replicas are you connecting to? (1/2/3) "))
+                # check if rep_count is a valid number
+                if self.rep_count not in [1, 2, 3]:
+                    continue
+                break
+            for i in range(1, self.rep_count+1):
+                self.handle_connect(str(i))
         except KeyboardInterrupt:
             print("\n[DISCONNECTED]")
             exit(0)
@@ -97,12 +100,6 @@ class Client:
         if leader_uuid == "":
             print("No replicas available. Exiting...")
             exit(0)
-        # elif original != self.primary:
-        #     # replace the stub
-        #     addr = str(self.ip_ports[self.primary][0]) + ":" + str(self.ip_ports[self.primary][1])
-        #     channel = grpc.insecure_channel(addr)
-        #     self.stub = rpc.ChatServerStub(channel)
-        #     print(f"[Leader election] stub changed: {self.primary}")
 
 
     # call to start everything: listening thread and the input thread
@@ -134,7 +131,6 @@ class Client:
                 continue
 
 
-
     # TODO: make the current replica None, then switch to another replica
     def switch_replica(self, new_server=False):
         print("[switch replica] switching replica from " + self.primary)
@@ -143,6 +139,7 @@ class Client:
             self.ip_ports[self.primary] = None
             self.primary = None
 
+        # find new primary
         self.leader_election()
         
         try:
@@ -152,7 +149,7 @@ class Client:
             self.channel = grpc.insecure_channel(addr)
             self.stub = rpc.ChatServerStub(self.channel)
 
-            print("[switch replica] stub changed! ")
+            print("[switch replica] switched to " + self.primary)
         except:
             # try another replica
             print("[switch replica] can't connect to replica; trying another replica...")
@@ -164,44 +161,25 @@ class Client:
     def ping(self):
         while True:
             # print("[Ping] Pinging primary replica...")
-            time.sleep(3)
-
+            time.sleep(1)
             try:
-                # print("[Ping] Pinging primary replica " + self.primary)
-                # print(self.stub)
-                response, status = self.stub.Ping.with_call(chat.Empty(), timeout=3)
+                response, status = self.stub.Ping.with_call(chat.Empty(), timeout=1)
 
                 # check if there's replica update: if so, update ip_ports
-                if response.change:
-                    if response.new_server:
-                        exist = False
-                        for r in self.ip_ports:
-                            if self.ip_ports[r] and str(response.port) == self.ip_ports[r][1]:
-                                exist = True
-                        if not exist:
-                            for r in self.ip_ports:
-                                if self.ip_ports[r] is None:
-                                    self.ip_ports[r] = [response.ip, str(response.port)]
-                                    print(f"[Ping] {r} added to ip_ports")
-                                    print(self.ip_ports)   
-                            self.switch_replica(new_server=True)
-                    # secondary failed
-                    else:
-                        for r in self.ip_ports:
-                            if (self.ip_ports[r] and 
-                                self.ip_ports[r][0] == response.ip and 
-                                self.ip_ports[r][1] == str(response.port)):
-                                self.ip_ports[r] = None
-                                print(f"[Ping] {r} removed from ip_ports")
-                                print(self.ip_ports)
-                # print("End of Ping")
+                if response.change and not response.new_server:
+                    for r in self.ip_ports:
+                        if (self.ip_ports[r] is not None and 
+                            self.ip_ports[r][0] == response.ip and 
+                            self.ip_ports[r][1] == str(response.port)):
+                            self.ip_ports[r] = None
+                            print(f"[Ping] {r} removed from ip_ports")
+                            print(self.ip_ports)
+                            break
 
             except grpc.RpcError as e:
                 print("[Ping] Primary replica failed. Trying another replica...")
-                print("Error:")
-                print(e)
+                print("[Ping] Error:" + str(e))
                 self.switch_replica()
-                print("End of Ping")
 
 
     # send message to server then to receiver
@@ -214,9 +192,6 @@ class Client:
         n.message = message
 
         print(self.ip_ports)
-        # get server response and print error message if unsuccessful
-        # TODO: get ACK, if not, server has failed, so choose another replica
-        # response = self.stub.SendNote(n)
         try:
             print("[primary: " + self.primary + "]")
             response, status = self.stub.SendNote.with_call(n, timeout=5)
@@ -225,9 +200,9 @@ class Client:
                 return False
             return True
         except grpc.RpcError as e:
-            print("Server failed, trying another replica...")
+            print("[Send] Server failed")
             # if no server is available, exit. Else, resend message
-            self.switch_replica()
+            # self.switch_replica()
             self.send_message(user, message)
 
     
@@ -253,9 +228,7 @@ class Client:
                     continue
                 
                 # send gRPC message for registering user
-                n = chat.AccountInfo()
-                n.username = username
-                n.password = self.get_hashed_password(password)
+                n = chat.AccountInfo(username=username, password=self.get_hashed_password(password))
                 response = self.stub.CreateAccount(n)
                 print(response.message)
                 if response.success:

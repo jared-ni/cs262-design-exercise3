@@ -11,6 +11,7 @@ message Note {
     string sender = 3;
 	string receiver = 4;
     string message = 5;
+	string username = 6;
 }
 
 // denotes a response from the server
@@ -23,6 +24,7 @@ message ServerResponse {
 message AccountInfo {
 	string username = 1;
 	string password = 2;
+	string client_addr = 3;
 }
 
 message ReplicaMessage {
@@ -60,13 +62,12 @@ service ChatServer {
 	rpc UpdateStream (Empty) returns (SystemUpdate);
 
     rpc SendNote (Note) returns (ServerResponse);
-	rpc SendCommit (CommitMessage) return (ServerResponse);
 	// account creation
 	rpc CreateAccount (AccountInfo) returns (ServerResponse);
 	// account login
 	rpc Login (AccountInfo) returns (ServerResponse);
 	// get unread
-	rpc Logout (Empty) returns (ServerResponse);
+	rpc Logout (AccountInfo) returns (ServerResponse);
 	// list accounts
 	rpc ListAccounts (AccountInfo) returns (stream ServerResponse);
 	// delete account

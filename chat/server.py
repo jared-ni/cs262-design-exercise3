@@ -12,6 +12,15 @@ import sys
 import sqlite3
 
 
+class MyContextWrapper:
+    def __init__(self, context):
+        self.context = context
+
+    def peer(self):
+        # Return the original peer address
+        return self.context.peer()
+
+
 # Chat Server class for handling gRPC connected clients and their requests
 class ChatServer(rpc.ChatServerServicer):
 
@@ -105,11 +114,11 @@ class ChatServer(rpc.ChatServerServicer):
     def detect_failure(self):
         print("[Detect failure] Started thread to detect failures")
         while True:
-            time.sleep(5)
+            time.sleep(1)
             for rep in self.replica_stubs:
                 if self.replica_stubs[rep] is not None:
                     try:
-                        response, status = self.replica_stubs[rep].PingServer.with_call(chat.ServerResponse(message=str(self.port)), timeout=10)
+                        response, status = self.replica_stubs[rep].PingServer.with_call(chat.ServerResponse(message=str(self.port)), timeout=1)
                     except grpc.RpcError as e:
                         print(f"[Detect failure] Could not connect to replica {rep}")
                         print(e)
@@ -124,8 +133,6 @@ class ChatServer(rpc.ChatServerServicer):
                             self.leader_election()
 
                         # inform clients of failed replica if current replica is primary
-                        print("[Detect failure] Informing clients of failed replica")
-
                         if self.primary == "self":
                             self.inform_client_new_replica(failed_replica, is_new=False)
 
@@ -142,7 +149,7 @@ class ChatServer(rpc.ChatServerServicer):
     
 
     def PingServer(self, request: chat.ServerResponse(), context):
-        print(f"[Server Ping] Received ping from {request.message}")
+        # print(f"[Server Ping] Received ping from {request.message}")
 
         return chat.ServerResponse(success=True, message="Pong")
 
@@ -184,8 +191,8 @@ class ChatServer(rpc.ChatServerServicer):
                 print("[SendReplica] Connected to replica")
                 print(self.ip_ports)
 
-                # if self.primary == "self":
-                self.inform_client_new_replica(self.ip_ports[rep], is_new=True)
+                if self.primary == "self":
+                    self.inform_client_new_replica(self.ip_ports[rep], is_new=True)
 
                 break
         
@@ -270,6 +277,7 @@ class ChatServer(rpc.ChatServerServicer):
         #     yield chat.ServerResponse(success=False, message="[SERVER] Error sending message")
                 
 
+    # TODO: must save login info to database
     # Send a message to the server then to the receiver
     def SendNote(self, request: chat.Note, context):
         # try: 
@@ -280,6 +288,12 @@ class ChatServer(rpc.ChatServerServicer):
 
         # check if the user is logged in
         current_user = None
+
+        print("[SendNote] Current clients:")
+        print(self.clients)
+        print("[SendNote] Current users:")
+        print(self.users)
+        print("current context: " + str(context.peer()))
 
         if context.peer() in self.clients:
             current_user = self.clients[context.peer()]
@@ -356,6 +370,13 @@ class ChatServer(rpc.ChatServerServicer):
         # insert into database
         self.cursor.execute('''INSERT INTO users (username, password) VALUES (?, ?)''', 
                             (request.username, self.hash_password(request.password)))
+        
+        # send to other replica
+        if self.primary == "self":
+            for rep in self.replica_stubs:
+                if self.replica_stubs[rep] is not None:
+                    self.replica_stubs[rep].CreateAccount(request)
+
         self.db.commit()
 
         return chat.ServerResponse(success=True, message=f"[SERVER] Account {request.username} created")
@@ -373,25 +394,23 @@ class ChatServer(rpc.ChatServerServicer):
         self.cursor.execute("SELECT * FROM users WHERE username = ?", (request.username,))
         user = self.cursor.fetchone()
 
-        print(user)
-
         if user is None:
             return chat.ServerResponse(success=False, message="[SERVER] Username does not exist")
-
-        # if request.username not in self.users:
-        #     return chat.ServerResponse(success=False, message="[SERVER] Username does not exist")
 
         # Check if the password is correct in database
         if not self.check_password(request.password, user[1]):
             return chat.ServerResponse(success=False, message="[SERVER] Incorrect password")
         
-        # if not self.check_password(request.password, self.users[request.username]['password']):
-        #     return chat.ServerResponse(success=False, message="[SERVER] Incorrect password")
-
         # warn previous client of the user account if logged in on new client
 
+        client_addr = context.peer() if self.primary == "self" else request.client_addr
+
+        print("user: ") 
+        print(user)
         print("currently logged in:")
         print(self.users)
+        print("currently connected clients:")
+        print(self.clients)
 
         if request.username in self.users and self.users[request.username]["client"] is not None:
             detection = chat.Note(message = f"Logged out: detected {request.username} login on another client.")
@@ -403,8 +422,8 @@ class ChatServer(rpc.ChatServerServicer):
                 self.clients[prev_client] = None
             
         # # Logout previous user
-        if context.peer() in self.clients and self.clients[context.peer()] is not None:
-            prev_user = self.clients[context.peer()]
+        if client_addr in self.clients and self.clients[client_addr] is not None:
+            prev_user = self.clients[client_addr]
             with self.users_lock:
                 self.users[prev_user]["logged_in"] = False
                 self.users[prev_user]["client"] = None
@@ -413,14 +432,14 @@ class ChatServer(rpc.ChatServerServicer):
         print(self.users)
 
         with self.clients_lock:
-            self.clients[context.peer()] = request.username
+            self.clients[client_addr] = request.username
         with self.users_lock:
             if request.username in self.users:
-                self.users[request.username]['client'] = context.peer()
+                self.users[request.username]['client'] = client_addr
                 self.users[request.username]['logged_in'] = True
             else:
                 self.users[request.username] = {
-                    "client": context.peer(),
+                    "client": client_addr,
                     "logged_in": True,
                     "unread": deque()
                 }
@@ -439,10 +458,19 @@ class ChatServer(rpc.ChatServerServicer):
 
         # successfully logged in
         # login on replicas 
+        new_request = chat.AccountInfo(username=request.username, password=request.password, client_addr=client_addr)
+        print("client_addr: ")
+        print(client_addr)
+        print("request context: ")
+        print(context.peer())
+        print(new_request.client_addr)
+
         if self.primary == "self":
             for rep in self.replica_stubs:
                 if self.replica_stubs[rep] is not None:
-                    self.replica_stubs[rep].Login(request)
+                    replica_response = self.replica_stubs[rep].Login(new_request)
+                    print("replica response: ")
+                    print(replica_response)
 
         # commit log
         # if self.primary == "self":
@@ -460,6 +488,7 @@ class ChatServer(rpc.ChatServerServicer):
     # Account Logout of the current client
     def Logout(self, request: chat.Empty, context):
         # Check if the username exists
+
         if context.peer() not in self.clients or self.clients[context.peer()] is None:
             return chat.ServerResponse(success=False, message="[SERVER] You are not logged in")
         
