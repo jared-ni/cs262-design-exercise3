@@ -52,13 +52,13 @@ terminal in the format **([\<username\>] \<message\>)**.
 For running unit testts,s open up a terminal and nagivate to the 
 directory containing server.py and client.py. Start the servers by typing
 ```bash
-python server.py 12345
+python server.py 12350
 ```
 ```bash
-python server.py 12346
+python server.py 12351
 ```
 ```bash
-python server.py 12347
+python server.py 12352
 ```
 as the unit tests were written with the server ports being 12345, 12346, and 12347.
 

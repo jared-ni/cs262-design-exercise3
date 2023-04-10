@@ -11,7 +11,7 @@ class ChatServerTest(unittest.TestCase):
     @classmethod
     @mock.patch('client.input', create=True)
     def setUpClass(cls, mock_input):
-        mock_input.side_effect = ["1", "yes", "12345"]
+        mock_input.side_effect = ["1", "yes", "12350"]
         cls.channel = grpc.insecure_channel('localhost:43210')
         cls.conn = rpc.ChatServerStub(cls.channel)
         cls.client = client.Client()
