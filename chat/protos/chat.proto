@@ -85,5 +85,6 @@ service ChatServer {
 
 	rpc SendFile(FileRequest) returns (stream ServerResponse){}
 
+	rpc ChatHistory(Empty) returns (stream Note){}
 }
 
