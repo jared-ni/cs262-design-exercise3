@@ -32,6 +32,8 @@ Now, the user can assess various functionalities by typing:
 
 **\<username\>: \<message\>**: sends \<message\> to \<username\> if \<username\> exists; sends immediately if \<username\> is logged on, else queues the message on the server.
 
+**./history**: check the chat history of the current user
+
 **./register**: registers another user
 
 **./login**: logs in another user
